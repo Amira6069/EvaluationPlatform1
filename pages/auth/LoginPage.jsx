@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import axios from "axios";
+import { STORAGE_KEYS } from "../../utils/constants";
 
 const LoginPage = () => {
   const navigate = useNavigate();
@@ -14,44 +16,62 @@ const LoginPage = () => {
     setErrors({ ...errors, [e.target.name]: '' });
   };
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    setLoading(true);
+  const handleSubmit = async (e) => {
+  e.preventDefault();
+  setLoading(true);
+  setErrors({});
 
-    const newErrors = {};
-    if (!formData.email) newErrors.email = 'Email is required';
-    if (!formData.password) newErrors.password = 'Password is required';
+  const newErrors = {};
+  if (!formData.email) newErrors.email = "Email is required";
+  if (!formData.password) newErrors.password = "Password is required";
 
-    if (Object.keys(newErrors).length > 0) {
-      setErrors(newErrors);
-      setLoading(false);
-      return;
+  if (Object.keys(newErrors).length > 0) {
+    setErrors(newErrors);
+    setLoading(false);
+    return;
+  }
+
+  try {
+    const response = await axios.post(
+      "http://localhost:8080/api/auth/login",
+      {
+        email: formData.email,
+        password: formData.password,
+      }
+    );
+
+    console.log("Login successful:", response.data);
+
+    // ✅ STORE REAL TOKEN
+    localStorage.setItem(STORAGE_KEYS.TOKEN, response.data.token);
+
+    // ✅ STORE REAL USER OBJECT
+    localStorage.setItem(
+      STORAGE_KEYS.USER,
+      JSON.stringify({
+        id: response.data.userId,
+        email: response.data.email,
+        name: response.data.name,
+        role: response.data.role,
+      })
+    );
+
+    // ✅ Redirect based on backend role (NOT dropdown role)
+    if (response.data.role === "ORGANIZATION") {
+      navigate("/organization/dashboard");
+    } else if (response.data.role === "EVALUATOR") {
+      navigate("/evaluator/dashboard");
+    } else if (response.data.role === "ADMIN") {
+      navigate("/admin/dashboard");
     }
 
-    const mockUser = {
-      id: 1,
-      email: formData.email,
-      fullName: 'John Doe',
-      role: selectedRole,
-    };
-
-    localStorage.setItem('governance_token', 'mock-token-12345');
-    localStorage.setItem('governance_user', JSON.stringify(mockUser));
-
-    console.log('Login successful! Role:', selectedRole);
-    console.log('User saved:', localStorage.getItem('governance_user'));
-
-    setTimeout(() => {
-      setLoading(false);
-      if (selectedRole === 'ORGANIZATION') {
-        navigate('/organization/dashboard');
-      } else if (selectedRole === 'EVALUATOR') {
-        navigate('/evaluator/dashboard');
-      } else if (selectedRole === 'ADMIN') {
-        navigate('/admin/dashboard');
-      }
-    }, 500);
-  };
+  } catch (error) {
+    console.error("Login error:", error);
+    setErrors({ general: "Invalid email or password" });
+  } finally {
+    setLoading(false);
+  }
+};
 
   const getRoleDescription = () => {
     const descriptions = {

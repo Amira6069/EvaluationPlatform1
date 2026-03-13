@@ -1,17 +1,32 @@
-import React from 'react';
-import Header from './Header/Header';
-import Sidebar from './Sidebar/Sidebar';
+import React from "react";
+import { Outlet } from "react-router-dom";
+import Sidebar from "./Sidebar/Sidebar";  // ✅ FIXED: Added /Sidebar
+import Header from "./Header/Header";      // ✅ FIXED: Added /Header
 
-const MainLayout = ({ children }) => {
+const MainLayout = () => {
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div style={{ 
+      minHeight: "100vh", 
+      background: "#f9fafb", 
+      display: "flex", 
+      flexDirection: "column" 
+    }}>
+      {/* Fixed Header at Top */}
       <Header />
-      <div className="flex">
+      
+      {/* Sidebar + Content Area */}
+      <div style={{ display: "flex", flex: 1, paddingTop: "64px" }}>
+        {/* Fixed Sidebar on Left */}
         <Sidebar />
-        <main className="flex-1 ml-64 p-8 pt-16">
-          <div className="max-w-7xl mx-auto">
-            {children}
-          </div>
+        
+        {/* Main Content - Pages render here */}
+        <main style={{ 
+          flex: 1, 
+          marginLeft: "220px",  // Match your sidebar width
+          padding: "32px",
+          overflowY: "auto" 
+        }}>
+          <Outlet />
         </main>
       </div>
     </div>

@@ -1,232 +1,97 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import { getMyEvaluations } from '../../Services/evaluationService';
 
 const DashboardPage = () => {
   const navigate = useNavigate();
-  const user = JSON.parse(localStorage.getItem('governance_user') || '{}');
-  
+  const { t } = useTranslation();
+  const [evaluations, setEvaluations] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
-    activeEvaluations: 0,
+    total: 0,
+    inProgress: 0,
     completed: 0,
-    pendingReview: 0,
-    score: 0,
+    avgScore: 0,
   });
-  
-  const [recentActivity, setRecentActivity] = useState([]);
-  
+
   useEffect(() => {
-    loadDashboardData();
+    fetchDashboardData();
   }, []);
-  
-  const loadDashboardData = () => {
-    // Load evaluations from localStorage
-    let activeCount = 0;
-    let completedCount = 0;
-    let pendingCount = 0;
-    const activities = [];
-    
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key && key.startsWith('evaluation_')) {
-        const evaluation = JSON.parse(localStorage.getItem(key));
-        
-        if (evaluation.status === 'draft') activeCount++;
-        if (evaluation.status === 'approved') completedCount++;
-        if (evaluation.status === 'submitted' || evaluation.status === 'under-review') pendingCount++;
-        
-        // Add to recent activity
-        activities.push({
-          type: evaluation.status === 'submitted' ? 'submitted' : 'draft',
-          text: evaluation.status === 'submitted' ? 'Evaluation submitted' : 'Draft saved',
-          date: evaluation.createdDate,
-        });
-      }
+
+  const fetchDashboardData = async () => {
+    try {
+      setLoading(true);
+      
+      console.log('📡 Fetching my evaluations from dashboard');
+      const response = await getMyEvaluations();
+      const evals = response.data || [];
+      
+      setEvaluations(evals);
+      
+      // Calculate stats
+      const total = evals.length;
+      const inProgress = evals.filter(e => 
+        e.status === 'CREATED' || e.status === 'IN_PROGRESS'
+      ).length;
+      const completed = evals.filter(e => 
+        e.status === 'SUBMITTED' || e.status === 'APPROVED'
+      ).length;
+      const avgScore = evals.length > 0
+        ? evals.reduce((sum, e) => sum + (e.totalScore || 0), 0) / evals.length
+        : 0;
+      
+      setStats({ total, inProgress, completed, avgScore: Math.round(avgScore) });
+      
+      console.log('✅ Dashboard data loaded:', evals.length, 'evaluations');
+      
+    } catch (error) {
+      console.error('❌ Error fetching dashboard data:', error);
+    } finally {
+      setLoading(false);
     }
-    
-    // Sort activities by date
-    activities.sort((a, b) => new Date(b.date) - new Date(a.date));
-    
-    setStats({
-      activeEvaluations: activeCount,
-      completed: completedCount,
-      pendingReview: pendingCount,
-      score: completedCount > 0 ? 85 : 0, // Mock score
-    });
-    
-    setRecentActivity(activities.slice(0, 4));
   };
-  
-  const handleLogout = () => {
-    localStorage.removeItem('governance_token');
-    localStorage.removeItem('governance_user');
-    navigate('/login');
+
+  const getStatusColor = (status) => {
+    const colors = {
+      CREATED: { bg: '#f3f4f6', color: '#374151' },
+      IN_PROGRESS: { bg: '#dbeafe', color: '#1e40af' },
+      SUBMITTED: { bg: '#e0e7ff', color: '#4338ca' },
+      UNDER_REVIEW: { bg: '#fef3c7', color: '#92400e' },
+      APPROVED: { bg: '#d1fae5', color: '#065f46' },
+      REJECTED: { bg: '#fee2e2', color: '#991b1b' },
+    };
+    return colors[status] || { bg: '#f3f4f6', color: '#374151' };
   };
-  
-  const getTimeAgo = (dateString) => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffInMs = now - date;
-    const diffInDays = Math.floor(diffInMs / (1000 * 60 * 60 * 24));
-    
-    if (diffInDays === 0) return 'Today';
-    if (diffInDays === 1) return '1 day ago';
-    if (diffInDays < 7) return `${diffInDays} days ago`;
-    if (diffInDays < 30) return `${Math.floor(diffInDays / 7)} week${Math.floor(diffInDays / 7) > 1 ? 's' : ''} ago`;
-    return date.toLocaleDateString();
-  };
-  
+
   const styles = {
-    container: {
-      minHeight: '100vh',
-      background: '#f9fafb',
-    },
-    header: {
-      background: 'white',
-      borderBottom: '1px solid #e5e7eb',
-      padding: '16px 0',
-      position: 'sticky',
-      top: 0,
-      zIndex: 40,
-      boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-    },
-    headerContent: {
-      maxWidth: '1280px',
-      margin: '0 auto',
-      padding: '0 24px',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-    },
-    logo: {
-      display: 'flex',
-      alignItems: 'center',
-      gap: '8px',
-      cursor: 'pointer',
-    },
-    logoIcon: {
-      width: '40px',
-      height: '40px',
-      background: '#2563eb',
-      borderRadius: '8px',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      fontSize: '20px',
-    },
-    logoText: {
-      fontSize: '20px',
-      fontWeight: 'bold',
-      color: '#111827',
-    },
-    userSection: {
-      display: 'flex',
-      alignItems: 'center',
-      gap: '16px',
-    },
-    userInfo: {
-      display: 'flex',
-      alignItems: 'center',
-      gap: '8px',
-      padding: '8px 12px',
-      background: '#f3f4f6',
-      borderRadius: '8px',
-    },
-    logoutBtn: {
-      padding: '8px 16px',
-      background: '#ef4444',
-      color: 'white',
-      border: 'none',
-      borderRadius: '8px',
-      cursor: 'pointer',
-      fontSize: '14px',
-      fontWeight: '500',
-      transition: 'background 0.2s',
-    },
-    layout: {
-      display: 'flex',
-      maxWidth: '1280px',
-      margin: '0 auto',
-    },
-    sidebar: {
-      width: '250px',
-      background: 'white',
-      borderRight: '1px solid #e5e7eb',
-      padding: '24px 0',
-      height: 'calc(100vh - 64px)',
-      position: 'sticky',
-      top: '64px',
-    },
-    menuItem: {
-      display: 'flex',
-      alignItems: 'center',
-      gap: '12px',
-      padding: '12px 24px',
-      color: '#374151',
-      cursor: 'pointer',
-      fontSize: '14px',
-      fontWeight: '500',
-      transition: 'background 0.2s',
-    },
-    menuItemActive: {
-      background: '#eff6ff',
-      color: '#2563eb',
-      borderLeft: '3px solid #2563eb',
-    },
-    main: {
-      flex: 1,
-      padding: '32px 24px',
-    },
-    pageTitle: {
-      fontSize: '32px',
-      fontWeight: 'bold',
-      color: '#111827',
-      marginBottom: '8px',
-    },
-    pageSubtitle: {
-      color: '#6b7280',
-      marginBottom: '32px',
-    },
+    container: { padding: '24px' },
+    header: { marginBottom: '32px' },
+    title: { fontSize: '28px', fontWeight: 'bold', color: '#111827', marginBottom: '8px' },
+    subtitle: { fontSize: '16px', color: '#6b7280' },
     statsGrid: {
       display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
-      gap: '24px',
+      gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+      gap: '20px',
       marginBottom: '32px',
     },
     statCard: {
       background: 'white',
-      borderRadius: '12px',
       padding: '24px',
+      borderRadius: '12px',
       boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-      transition: 'box-shadow 0.2s',
-      cursor: 'pointer',
-    },
-    statContent: {
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-    },
-    statInfo: {
-      display: 'flex',
-      flexDirection: 'column',
-    },
-    statLabel: {
-      fontSize: '14px',
-      color: '#6b7280',
-      marginBottom: '8px',
+      transition: 'transform 0.2s, box-shadow 0.2s',
     },
     statValue: {
       fontSize: '36px',
       fontWeight: 'bold',
       color: '#111827',
+      marginBottom: '4px',
     },
-    statIcon: {
-      width: '48px',
-      height: '48px',
-      borderRadius: '12px',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      fontSize: '24px',
+    statLabel: {
+      fontSize: '14px',
+      color: '#6b7280',
+      fontWeight: '500',
     },
     section: {
       background: 'white',
@@ -241,267 +106,294 @@ const DashboardPage = () => {
       alignItems: 'center',
       marginBottom: '20px',
     },
-    sectionTitle: {
-      fontSize: '20px',
-      fontWeight: '600',
-      color: '#111827',
-    },
-    viewAllLink: {
-      fontSize: '14px',
+    sectionTitle: { fontSize: '18px', fontWeight: '600', color: '#111827' },
+    viewAllButton: {
+      padding: '8px 16px',
+      background: '#eff6ff',
       color: '#2563eb',
+      border: 'none',
+      borderRadius: '6px',
       cursor: 'pointer',
-      fontWeight: '500',
-    },
-    activityList: {
-      display: 'flex',
-      flexDirection: 'column',
-      gap: '16px',
-    },
-    activityItem: {
-      display: 'flex',
-      alignItems: 'center',
-      gap: '12px',
-      padding: '12px',
-      background: '#f9fafb',
-      borderRadius: '8px',
-    },
-    activityIcon: {
-      width: '40px',
-      height: '40px',
-      borderRadius: '8px',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      fontSize: '18px',
-    },
-    activityText: {
-      flex: 1,
-    },
-    activityTitle: {
       fontSize: '14px',
       fontWeight: '500',
-      color: '#111827',
-      marginBottom: '4px',
+      transition: 'background 0.2s',
     },
-    activityDate: {
+    evaluationRow: {
+      padding: '16px',
+      borderRadius: '8px',
+      border: '1px solid #e5e7eb',
+      marginBottom: '12px',
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      cursor: 'pointer',
+      transition: 'background 0.2s',
+    },
+    badge: {
+      display: 'inline-block',
+      padding: '4px 10px',
+      borderRadius: '10px',
       fontSize: '12px',
+      fontWeight: '600',
+    },
+    loading: {
+      textAlign: 'center',
+      padding: '60px',
       color: '#6b7280',
     },
-    quickActions: {
-      display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
-      gap: '16px',
+    empty: {
+      textAlign: 'center',
+      padding: '40px',
+      color: '#6b7280',
     },
-    actionButton: {
-      padding: '20px',
+    newEvalButton: {
+      padding: '10px 20px',
       background: '#2563eb',
       color: 'white',
       border: 'none',
-      borderRadius: '12px',
+      borderRadius: '8px',
       cursor: 'pointer',
-      fontSize: '16px',
+      fontSize: '14px',
       fontWeight: '600',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: '12px',
       transition: 'background 0.2s',
     },
-    actionButtonSecondary: {
-      background: 'white',
-      color: '#374151',
-      border: '2px solid #e5e7eb',
+    quickActionsGrid: {
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+      gap: '12px',
+      marginTop: '16px',
+    },
+    actionCard: {
+      padding: '20px',
+      background: '#f9fafb',
+      borderRadius: '8px',
+      border: '1px solid #e5e7eb',
+      cursor: 'pointer',
+      transition: 'all 0.2s',
+      textAlign: 'center',
+    },
+    actionIcon: {
+      fontSize: '32px',
+      marginBottom: '8px',
+    },
+    actionLabel: {
+      fontSize: '14px',
+      fontWeight: '600',
+      color: '#111827',
     },
   };
-  
-  const statsData = [
-    { 
-      label: 'Active Evaluations', 
-      value: stats.activeEvaluations, 
-      icon: '📝', 
-      color: '#3b82f6',
-      bgColor: '#dbeafe'
-    },
-    { 
-      label: 'Completed', 
-      value: stats.completed, 
-      icon: '✅', 
-      color: '#10b981',
-      bgColor: '#d1fae5'
-    },
-    { 
-      label: 'Pending Review', 
-      value: stats.pendingReview, 
-      icon: '⏳', 
-      color: '#f59e0b',
-      bgColor: '#fef3c7'
-    },
-    { 
-      label: 'Latest Score', 
-      value: stats.score, 
-      icon: '🏆', 
-      color: '#8b5cf6',
-      bgColor: '#ede9fe'
-    },
-  ];
-  
+
+  if (loading) {
+    return (
+      <div style={styles.container}>
+        <div style={styles.loading}>
+          <div style={{ fontSize: '48px', marginBottom: '16px' }}>⏳</div>
+          <p>{t('dashboard.loadingStats')}</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={styles.container}>
-      {/* Header */}
-      <header style={styles.header}>
-        <div style={styles.headerContent}>
-          <div style={styles.logo} onClick={() => navigate('/organization/dashboard')}>
-            <div style={styles.logoIcon}>🛡️</div>
-            <span style={styles.logoText}>Governance Platform</span>
-          </div>
-          
-          <div style={styles.userSection}>
-            <div style={styles.userInfo}>
-              <span>👤</span>
-              <span style={{ fontSize: '14px', fontWeight: '500' }}>
-                {user.fullName || 'User'}
-              </span>
-            </div>
-            <button 
-              onClick={handleLogout}
-              style={styles.logoutBtn}
-              onMouseEnter={(e) => e.target.style.background = '#dc2626'}
-              onMouseLeave={(e) => e.target.style.background = '#ef4444'}
-            >
-              Logout
-            </button>
-          </div>
+      <div style={styles.header}>
+        <h1 style={styles.title}>📊 {t('dashboard.overview')}</h1>
+        <p style={styles.subtitle}>{t('dashboard.welcomeBack')}</p>
+      </div>
+
+      {/* Stats Cards */}
+      <div style={styles.statsGrid}>
+        <div
+          style={styles.statCard}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = 'translateY(-4px)';
+            e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = 'translateY(0)';
+            e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.1)';
+          }}
+        >
+          <div style={styles.statValue}>{stats.total}</div>
+          <div style={styles.statLabel}>{t('dashboard.totalEvaluations')}</div>
         </div>
-      </header>
-      
-      <div style={styles.layout}>
-        {/* Sidebar */}
-        <aside style={styles.sidebar}>
-          <div style={{...styles.menuItem, ...styles.menuItemActive}}>
-            <span>📊</span>
-            <span>Dashboard</span>
-          </div>
-          <div 
-            style={styles.menuItem}
+        <div
+          style={styles.statCard}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = 'translateY(-4px)';
+            e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = 'translateY(0)';
+            e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.1)';
+          }}
+        >
+          <div style={styles.statValue}>{stats.inProgress}</div>
+          <div style={styles.statLabel}>{t('dashboard.activeEvaluations')}</div>
+        </div>
+        <div
+          style={styles.statCard}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = 'translateY(-4px)';
+            e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = 'translateY(0)';
+            e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.1)';
+          }}
+        >
+          <div style={styles.statValue}>{stats.completed}</div>
+          <div style={styles.statLabel}>{t('dashboard.completedEvaluations')}</div>
+        </div>
+        <div
+          style={styles.statCard}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = 'translateY(-4px)';
+            e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = 'translateY(0)';
+            e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.1)';
+          }}
+        >
+          <div style={styles.statValue}>{stats.avgScore}%</div>
+          <div style={styles.statLabel}>{t('evaluation.overallScore')}</div>
+        </div>
+      </div>
+
+      {/* Recent Evaluations */}
+      <div style={styles.section}>
+        <div style={styles.sectionHeader}>
+          <h2 style={styles.sectionTitle}>{t('dashboard.recentActivity')}</h2>
+          <button
+            style={styles.viewAllButton}
             onClick={() => navigate('/organization/evaluations')}
-            onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
-            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+            onMouseEnter={(e) => (e.target.style.background = '#dbeafe')}
+            onMouseLeave={(e) => (e.target.style.background = '#eff6ff')}
           >
-            <span>📝</span>
-            <span>Evaluations</span>
-          </div>
-          <div 
-            style={styles.menuItem}
-            onClick={() => navigate('/organization/results')}
-            onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
-            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-          >
-            <span>📈</span>
-            <span>Results</span>
-          </div>
-          <div 
-            style={styles.menuItem}
-            onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
-            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-          >
-            <span>⚙️</span>
-            <span>Settings</span>
-          </div>
-        </aside>
-        
-        {/* Main Content */}
-        <main style={styles.main}>
-          <h1 style={styles.pageTitle}>Dashboard</h1>
-          <p style={styles.pageSubtitle}>
-            Welcome back, {user.fullName || 'User'}!
-          </p>
-          
-          {/* Stats Grid */}
-          <div style={styles.statsGrid}>
-            {statsData.map((stat, index) => (
-              <div 
-                key={index}
-                style={styles.statCard}
-                onMouseEnter={(e) => e.currentTarget.style.boxShadow = '0 10px 15px rgba(0,0,0,0.1)'}
-                onMouseLeave={(e) => e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.1)'}
+            {t('dashboard.viewAll')} →
+          </button>
+        </div>
+
+        {evaluations.length > 0 ? (
+          evaluations.slice(0, 5).map((evaluation) => {
+            const statusColor = getStatusColor(evaluation.status);
+            return (
+              <div
+                key={evaluation.evaluationId}
+                style={styles.evaluationRow}
+                onClick={() => navigate(`/organization/evaluations/${evaluation.evaluationId}`)}
+                onMouseEnter={(e) => (e.currentTarget.style.background = '#f9fafb')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
               >
-                <div style={styles.statContent}>
-                  <div style={styles.statInfo}>
-                    <p style={styles.statLabel}>{stat.label}</p>
-                    <p style={styles.statValue}>{stat.value}</p>
+                <div>
+                  <div style={{ fontWeight: '600', marginBottom: '4px' }}>
+                    {evaluation.name}
                   </div>
-                  <div style={{
-                    ...styles.statIcon,
-                    background: stat.bgColor,
-                  }}>
-                    {stat.icon}
+                  <div style={{ fontSize: '13px', color: '#6b7280' }}>
+                    {evaluation.period}
                   </div>
                 </div>
+                <div>
+                  <span
+                    style={{
+                      ...styles.badge,
+                      background: statusColor.bg,
+                      color: statusColor.color,
+                    }}
+                  >
+                    {t(`evaluation.${evaluation.status.toLowerCase()}`)}
+                  </span>
+                </div>
               </div>
-            ))}
+            );
+          })
+        ) : (
+          <div style={styles.empty}>
+            <p style={{ fontSize: '40px', marginBottom: '12px' }}>📋</p>
+            <p style={{ fontWeight: '600', marginBottom: '8px' }}>
+              {t('evaluation.noEvaluationsFound')}
+            </p>
+            <button
+              style={styles.newEvalButton}
+              onClick={() => navigate('/organization/evaluations/new')}
+              onMouseEnter={(e) => (e.target.style.background = '#1d4ed8')}
+              onMouseLeave={(e) => (e.target.style.background = '#2563eb')}
+            >
+              + {t('evaluation.newEvaluation')}
+            </button>
           </div>
-          
-          {/* Quick Actions */}
-          <div style={styles.section}>
-            <h2 style={styles.sectionTitle}>Quick Actions</h2>
-            <div style={styles.quickActions}>
-              <button
-                style={styles.actionButton}
-                onClick={() => navigate('/organization/evaluations/new')}
-                onMouseEnter={(e) => e.target.style.background = '#1d4ed8'}
-                onMouseLeave={(e) => e.target.style.background = '#2563eb'}
-              >
-                <span>➕</span>
-                <span>Start New Evaluation</span>
-              </button>
-              <button
-                style={{...styles.actionButton, ...styles.actionButtonSecondary}}
-                onClick={() => navigate('/organization/results')}
-                onMouseEnter={(e) => e.target.style.background = '#f9fafb'}
-                onMouseLeave={(e) => e.target.style.background = 'white'}
-              >
-                <span>📊</span>
-                <span>View Results</span>
-              </button>
-            </div>
+        )}
+      </div>
+
+      {/* Quick Actions */}
+      <div style={styles.section}>
+        <h2 style={styles.sectionTitle}>{t('dashboard.quickActions')}</h2>
+        <div style={styles.quickActionsGrid}>
+          <div
+            style={styles.actionCard}
+            onClick={() => navigate('/organization/evaluations/new')}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = '#eff6ff';
+              e.currentTarget.style.borderColor = '#2563eb';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = '#f9fafb';
+              e.currentTarget.style.borderColor = '#e5e7eb';
+            }}
+          >
+            <div style={styles.actionIcon}>➕</div>
+            <div style={styles.actionLabel}>{t('evaluation.newEvaluation')}</div>
           </div>
-          
-          {/* Recent Activity */}
-          <div style={styles.section}>
-            <div style={styles.sectionHeader}>
-              <h2 style={styles.sectionTitle}>Recent Activity</h2>
-              <span 
-                style={styles.viewAllLink}
-                onClick={() => navigate('/organization/evaluations')}
-              >
-                View all →
-              </span>
-            </div>
-            
-            {recentActivity.length > 0 ? (
-              <div style={styles.activityList}>
-                {recentActivity.map((activity, index) => (
-                  <div key={index} style={styles.activityItem}>
-                    <div style={{
-                      ...styles.activityIcon,
-                      background: activity.type === 'submitted' ? '#d1fae5' : '#dbeafe'
-                    }}>
-                      {activity.type === 'submitted' ? '✅' : '📝'}
-                    </div>
-                    <div style={styles.activityText}>
-                      <p style={styles.activityTitle}>{activity.text}</p>
-                      <p style={styles.activityDate}>{getTimeAgo(activity.date)}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p style={{ textAlign: 'center', color: '#6b7280', padding: '40px 0' }}>
-                No recent activity. Start a new evaluation to get started!
-              </p>
-            )}
+
+          <div
+            style={styles.actionCard}
+            onClick={() => navigate('/organization/evaluations')}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = '#eff6ff';
+              e.currentTarget.style.borderColor = '#2563eb';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = '#f9fafb';
+              e.currentTarget.style.borderColor = '#e5e7eb';
+            }}
+          >
+            <div style={styles.actionIcon}>📋</div>
+            <div style={styles.actionLabel}>{t('nav.evaluations')}</div>
           </div>
-        </main>
+
+          <div
+            style={styles.actionCard}
+            onClick={() => navigate('/organization/results')}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = '#eff6ff';
+              e.currentTarget.style.borderColor = '#2563eb';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = '#f9fafb';
+              e.currentTarget.style.borderColor = '#e5e7eb';
+            }}
+          >
+            <div style={styles.actionIcon}>📈</div>
+            <div style={styles.actionLabel}>{t('nav.results')}</div>
+          </div>
+
+          <div
+            style={styles.actionCard}
+            onClick={() => navigate('/organization/settings')}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = '#eff6ff';
+              e.currentTarget.style.borderColor = '#2563eb';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = '#f9fafb';
+              e.currentTarget.style.borderColor = '#e5e7eb';
+            }}
+          >
+            <div style={styles.actionIcon}>⚙️</div>
+            <div style={styles.actionLabel}>{t('nav.settings')}</div>
+          </div>
+        </div>
       </div>
     </div>
   );

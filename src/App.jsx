@@ -1,124 +1,159 @@
-import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import React, { useEffect } from "react";
+import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
+import { useTranslation } from 'react-i18next';
 
-import LoginPage from './Pages/auth/LoginPage';
-import RegisterPage from './Pages/auth/RegisterPage';
+import { AuthProvider, useAuth } from "./contexts/AuthContext";
 
-import OrgDashboardPage from './Pages/Organization/DashboardPage';
-import EvaluationsListPage from './Pages/Organization/EvaluationsListPage';
-import NewEvaluationPage from './Pages/Organization/NewEvaluationPage';
-import EvaluationFormPage from './Pages/Organization/EvaluationFormPage';
-import EvaluationDetailsPage from './Pages/Organization/EvaluationDetailsPage';
-import ResultsPage from './Pages/Organization/ResultsPage';
+import LoginPage from "./Pages/auth/LoginPage";
+import RegisterPage from "./Pages/auth/RegisterPage";
+import MainLayout from "./components/layout/MainLayout";
 
-import EvaluatorDashboardPage from './Pages/Evaluator/DashboardPage';
-import QueuePage from './Pages/Evaluator/QueuePage';
-import ReviewPage from './Pages/Evaluator/ReviewPage';
+// Organization Pages
+import OrganizationDashboardPage from "./Pages/Organization/DashboardPage";
+import OrganizationEvaluationsPage from "./Pages/Organization/EvaluationsPage";
+import NewEvaluationPage from "./Pages/Organization/NewEvaluationPage";
+import OrganizationSettingsPage from "./Pages/Organization/SettingsPage";
+import ResultsPage from "./Pages/Organization/ResultsPage";
+import RecommendationsPage from "./Pages/Organization/RecommendationsPage";
 
-import AdminDashboardPage from './Pages/Admin/DashboardPage';
-import UsersPage from './Pages/Admin/UsersPage';
-import SettingsPage from './Pages/Admin/SettingsPage';
+// Evaluator Pages
+import EvaluatorDashboardPage from "./Pages/Evaluator/DashboardPage";
+import QueuePage from "./Pages/Evaluator/QueuePage";
+import ReviewPage from "./Pages/Evaluator/ReviewPage";
 
-import { ROUTES, STORAGE_KEYS, USER_ROLES } from './utils/constants';
+// Admin Pages
+import AdminDashboardPage from "./Pages/Admin/DashboardPage";
+import UsersPage from "./Pages/Admin/UsersPage";
+import EvaluationsPage from "./Pages/Admin/EvaluationsPage";
+import GovernancePage from "./Pages/Admin/GovernancePage";
 
-const ProtectedRoute = ({ children, allowedRoles = [] }) => {
-  const token = localStorage.getItem(STORAGE_KEYS.TOKEN);
-  const userStr = localStorage.getItem(STORAGE_KEYS.USER);
+import { ROUTES } from "./utils/constants";
 
-  if (!token) return <Navigate to={ROUTES.LOGIN} replace />;
+// Import i18n config
+import './i18n/config';
 
-  if (userStr) {
-    try {
-      const user = JSON.parse(userStr);
-      if (allowedRoles.length > 0 && !allowedRoles.includes(user.role)) {
-        return <Navigate to={ROUTES.LOGIN} replace />;
-      }
-    } catch {
-      return <Navigate to={ROUTES.LOGIN} replace />;
-    }
+const ProtectedRoute = ({ children, allowedRoles }) => {
+  const { user, token, loading, isAuthenticated } = useAuth();
+
+  console.log('🔐 ProtectedRoute Check:');
+  console.log('  Loading:', loading);
+  console.log('  IsAuthenticated:', isAuthenticated);
+  console.log('  Token:', token ? 'EXISTS' : 'MISSING');
+  console.log('  User:', user);
+  console.log('  User Role:', user?.role);
+  console.log('  Allowed Roles:', allowedRoles);
+
+  if (loading) {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: '#f9fafb'
+      }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: '48px', marginBottom: '16px' }}>⏳</div>
+          <p style={{ color: '#6b7280', fontSize: '16px' }}>Checking authentication...</p>
+        </div>
+      </div>
+    );
   }
 
+  if (!isAuthenticated) {
+    console.log('❌ Not authenticated - redirecting to login');
+    return <Navigate to={ROUTES.LOGIN} replace />;
+  }
+
+  if (allowedRoles && !allowedRoles.includes(user.role)) {
+    console.log(`❌ Role ${user.role} not authorized - redirecting`);
+    
+    if (user.role === "ORGANIZATION") return <Navigate to={ROUTES.ORG_DASHBOARD} replace />;
+    if (user.role === "EVALUATOR") return <Navigate to={ROUTES.EVAL_DASHBOARD} replace />;
+    if (user.role === "ADMIN") return <Navigate to={ROUTES.ADMIN_DASHBOARD} replace />;
+    
+    return <Navigate to={ROUTES.LOGIN} replace />;
+  }
+
+  console.log('✅ Access granted for role:', user.role);
   return children;
 };
 
-function App() {
+function AppContent() {
+  const { i18n } = useTranslation();
+
+  // Set document direction based on language
+  useEffect(() => {
+    document.dir = i18n.language === 'ar' ? 'rtl' : 'ltr';
+  }, [i18n.language]);
+
   return (
-    <BrowserRouter>
+    <Router>
       <Routes>
-        {/* Public */}
+        {/* PUBLIC ROUTES */}
         <Route path={ROUTES.LOGIN} element={<LoginPage />} />
         <Route path={ROUTES.REGISTER} element={<RegisterPage />} />
 
-        {/* Organization */}
-        <Route path={ROUTES.ORG_DASHBOARD} element={
-          <ProtectedRoute allowedRoles={[USER_ROLES.ORGANIZATION]}>
-            <OrgDashboardPage />
-          </ProtectedRoute>
-        } />
-        <Route path={ROUTES.ORG_EVALUATIONS} element={
-          <ProtectedRoute allowedRoles={[USER_ROLES.ORGANIZATION]}>
-            <EvaluationsListPage />
-          </ProtectedRoute>
-        } />
-        <Route path={ROUTES.ORG_EVALUATION_NEW} element={
-          <ProtectedRoute allowedRoles={[USER_ROLES.ORGANIZATION]}>
-            <NewEvaluationPage />
-          </ProtectedRoute>
-        } />
-        <Route path="/organization/evaluations/:id/form" element={
-          <ProtectedRoute allowedRoles={[USER_ROLES.ORGANIZATION]}>
-            <EvaluationFormPage />
-          </ProtectedRoute>
-        } />
-        <Route path="/organization/evaluations/:id" element={
-          <ProtectedRoute allowedRoles={[USER_ROLES.ORGANIZATION]}>
-            <EvaluationDetailsPage />
-          </ProtectedRoute>
-        } />
-        <Route path={ROUTES.ORG_RESULTS} element={
-          <ProtectedRoute allowedRoles={[USER_ROLES.ORGANIZATION]}>
-            <ResultsPage />
-          </ProtectedRoute>
-        } />
+        {/* ORGANIZATION ROUTES */}
+        <Route
+          path="/organization"
+          element={
+            <ProtectedRoute allowedRoles={["ORGANIZATION", "ADMIN"]}>
+              <MainLayout />
+            </ProtectedRoute>
+          }
+        >
+          <Route path="dashboard" element={<OrganizationDashboardPage />} />
+          <Route path="evaluations" element={<OrganizationEvaluationsPage />} />
+          <Route path="evaluations/new" element={<NewEvaluationPage />} />
+<Route path="evaluations/:id" element={<NewEvaluationPage />} />
+          <Route path="settings" element={<OrganizationSettingsPage />} />
+          <Route path="results" element={<ResultsPage />} />
+          <Route path="recommendations/:id" element={<RecommendationsPage />} /> 
+        </Route>
 
-        {/* Evaluator */}
-        <Route path="/evaluator/dashboard" element={
-          <ProtectedRoute allowedRoles={[USER_ROLES.EVALUATOR]}>
-            <EvaluatorDashboardPage />
-          </ProtectedRoute>
-        } />
-        <Route path="/evaluator/queue" element={
-          <ProtectedRoute allowedRoles={[USER_ROLES.EVALUATOR]}>
-            <QueuePage />
-          </ProtectedRoute>
-        } />
-        <Route path="/evaluator/review/:id" element={
-          <ProtectedRoute allowedRoles={[USER_ROLES.EVALUATOR]}>
-            <ReviewPage />
-          </ProtectedRoute>
-        } />
+        {/* EVALUATOR ROUTES */}
+        <Route
+          path="/evaluator"
+          element={
+            <ProtectedRoute allowedRoles={["EVALUATOR", "ADMIN"]}>
+              <MainLayout />
+            </ProtectedRoute>
+          }
+        >
+          <Route path="dashboard" element={<EvaluatorDashboardPage />} />
+          <Route path="queue" element={<QueuePage />} />
+          <Route path="review/:id" element={<ReviewPage />} />
+        </Route>
 
-        {/* Admin */}
-        <Route path="/admin/dashboard" element={
-          <ProtectedRoute allowedRoles={[USER_ROLES.ADMIN]}>
-            <AdminDashboardPage />
-          </ProtectedRoute>
-        } />
-        <Route path="/admin/users" element={
-          <ProtectedRoute allowedRoles={[USER_ROLES.ADMIN]}>
-            <UsersPage />
-          </ProtectedRoute>
-        } />
-        <Route path="/admin/settings" element={
-          <ProtectedRoute allowedRoles={[USER_ROLES.ADMIN]}>
-            <SettingsPage />
-          </ProtectedRoute>
-        } />
+        {/* ADMIN ROUTES */}
+        <Route
+          path="/admin"
+          element={
+            <ProtectedRoute allowedRoles={["ADMIN"]}>
+              <MainLayout />
+            </ProtectedRoute>
+          }
+        >
+          <Route path="dashboard" element={<AdminDashboardPage />} />
+          <Route path="users" element={<UsersPage />} />
+          <Route path="evaluations" element={<EvaluationsPage />} />
+          <Route path="governance" element={<GovernancePage />} />
+        </Route>
 
+        {/* FALLBACK */}
         <Route path="/" element={<Navigate to={ROUTES.LOGIN} replace />} />
         <Route path="*" element={<Navigate to={ROUTES.LOGIN} replace />} />
       </Routes>
-    </BrowserRouter>
+    </Router>
+  );
+}
+
+function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 }
 

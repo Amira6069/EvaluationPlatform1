@@ -1,426 +1,646 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import {
+  createEvaluation,
+  updateEvaluation,
+  getEvaluationById,
+  saveResponses,
+  submitEvaluation,
+} from '../../Services/evaluationService';
+import { GOVERNANCE_PRINCIPLES } from '../../utils/constants';
 
 const NewEvaluationPage = () => {
   const navigate = useNavigate();
-  const user = JSON.parse(localStorage.getItem('governance_user') || '{}');
-  
-  const [formData, setFormData] = useState({
+  const { id } = useParams(); // If editing existing evaluation
+  const { t } = useTranslation();
+  const topRef = useRef(null); // ✅ For auto-scroll
+
+  const [step, setStep] = useState(1); // 1 = Basic Info, 2 = Fill Criteria
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  // Basic evaluation info
+  const [evaluationData, setEvaluationData] = useState({
     name: '',
     description: '',
     period: '',
   });
+
+  const [evaluationId, setEvaluationId] = useState(id || null);
+  const [currentPrincipleIndex, setCurrentPrincipleIndex] = useState(0);
   
-  const [errors, setErrors] = useState({});
-  
-  const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
-    setErrors({ ...errors, [e.target.name]: '' });
+  // Responses: { "1-1-1": { maturityLevel: 2, evidence: "...", comments: "..." } }
+  const [responses, setResponses] = useState({});
+
+  useEffect(() => {
+    if (id) {
+      loadEvaluation(id);
+    }
+  }, [id]);
+
+  // ✅ Auto-scroll to top when principle changes
+  useEffect(() => {
+    if (topRef.current && step === 2) {
+      topRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [currentPrincipleIndex, step]);
+
+  const loadEvaluation = async (evalId) => {
+    try {
+      setLoading(true);
+      const response = await getEvaluationById(evalId);
+      const { evaluation, responses: existingResponses } = response.data;
+
+      setEvaluationData({
+        name: evaluation.name,
+        description: evaluation.description,
+        period: evaluation.period,
+      });
+
+      // Convert responses array to object
+      const responsesObj = {};
+      existingResponses.forEach((r) => {
+        const key = `${r.principleId}-${r.practiceId}-${r.criterionId}`;
+        responsesObj[key] = {
+          maturityLevel: r.maturityLevel,
+          evidence: r.evidence || '',
+          comments: r.comments || '',
+        };
+      });
+
+      setResponses(responsesObj);
+      setStep(2); // Go directly to filling criteria if editing
+    } catch (err) {
+      console.error('Error loading evaluation:', err);
+      setError(t('evaluation.loadFailed'));
+    } finally {
+      setLoading(false);
+    }
   };
-  
-  const handleSubmit = (e) => {
+
+  const handleBasicInfoSubmit = async (e) => {
     e.preventDefault();
     
-    const newErrors = {};
-    if (!formData.name.trim()) newErrors.name = 'Evaluation name is required';
-    if (!formData.period.trim()) newErrors.period = 'Period is required';
-    
-    if (Object.keys(newErrors).length > 0) {
-      setErrors(newErrors);
+    if (!evaluationData.name || !evaluationData.period) {
+      setError(t('evaluation.nameRequired') || 'Name and period are required');
       return;
     }
-    
-    // Create new evaluation
-    const evaluationId = Date.now();
-    const newEvaluation = {
-      id: evaluationId,
-      name: formData.name,
-      description: formData.description,
-      period: formData.period,
-      status: 'draft',
-      createdDate: new Date().toISOString(),
-      responses: {},
-    };
-    
-    // Save to localStorage
-    localStorage.setItem(`evaluation_${evaluationId}`, JSON.stringify(newEvaluation));
-    
-    console.log('✅ New evaluation created:', newEvaluation);
-    
-    // Navigate to evaluations list
-    alert(`Evaluation "${formData.name}" created successfully!`);
-    navigate('/organization/evaluations');
+
+    try {
+      setLoading(true);
+      setError('');
+
+      if (evaluationId) {
+        // Update existing
+        await updateEvaluation(evaluationId, evaluationData);
+        console.log('✅ Evaluation updated');
+      } else {
+        // Create new
+        const response = await createEvaluation(evaluationData);
+        setEvaluationId(response.data.evaluationId);
+        console.log('✅ Evaluation created:', response.data.evaluationId);
+      }
+
+      setStep(2); // Move to criteria filling
+    } catch (err) {
+      console.error('Error saving evaluation:', err);
+      setError(t('evaluation.createFailed'));
+    } finally {
+      setLoading(false);
+    }
   };
-  
-  const handleLogout = () => {
-    localStorage.removeItem('governance_token');
-    localStorage.removeItem('governance_user');
-    navigate('/login');
+
+  const handleResponseChange = (principleId, practiceId, criterionId, field, value) => {
+    const key = `${principleId}-${practiceId}-${criterionId}`;
+    setResponses((prev) => ({
+      ...prev,
+      [key]: {
+        ...prev[key],
+        [field]: value,
+      },
+    }));
   };
-  
+
+  const handleSaveProgress = async () => {
+    if (!evaluationId) return;
+
+    try {
+      setSaving(true);
+      
+      // Convert responses object to array
+      const responsesArray = Object.keys(responses).map((key) => {
+        const [principleId, practiceId, criterionId] = key.split('-').map(Number);
+        return {
+          principleId,
+          practiceId,
+          criterionId,
+          maturityLevel: responses[key].maturityLevel,
+          evidence: responses[key].evidence,
+          comments: responses[key].comments,
+        };
+      });
+
+      await saveResponses(evaluationId, responsesArray);
+      console.log('✅ Progress saved');
+      
+      alert(t('evaluation.progressSaved') || 'Progress saved successfully!');
+    } catch (err) {
+      console.error('Error saving progress:', err);
+      alert(t('evaluation.saveFailed') || 'Failed to save progress');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSubmitEvaluation = async () => {
+    if (!evaluationId) return;
+
+    // Check if all criteria are filled
+    let totalCriteria = 0;
+    let filledCriteria = 0;
+
+    GOVERNANCE_PRINCIPLES.forEach((principle) => {
+      principle.practices.forEach((practice) => {
+        practice.criteria.forEach((criterion) => {
+          totalCriteria++;
+          const key = `${principle.id}-${practice.id}-${criterion.id}`;
+          if (responses[key]?.maturityLevel != null) {
+            filledCriteria++;
+          }
+        });
+      });
+    });
+
+    if (filledCriteria < totalCriteria) {
+      const proceed = window.confirm(
+        `Only ${filledCriteria}/${totalCriteria} criteria filled. Submit anyway?`
+      );
+      if (!proceed) return;
+    }
+
+    try {
+      setSaving(true);
+
+      // Save responses first
+      const responsesArray = Object.keys(responses).map((key) => {
+        const [principleId, practiceId, criterionId] = key.split('-').map(Number);
+        return {
+          principleId,
+          practiceId,
+          criterionId,
+          maturityLevel: responses[key].maturityLevel || 0,
+          evidence: responses[key].evidence || '',
+          comments: responses[key].comments || '',
+        };
+      });
+
+      await saveResponses(evaluationId, responsesArray);
+
+      // Submit evaluation
+      const result = await submitEvaluation(evaluationId);
+      
+      console.log('✅ Evaluation submitted:', result.data);
+      
+      alert(
+        `${t('evaluation.evaluationSubmitted')}\n${t('evaluation.score')}: ${Math.round(
+          result.data.score
+        )}%`
+      );
+
+      navigate('/organization/evaluations');
+    } catch (err) {
+      console.error('Error submitting evaluation:', err);
+      alert(t('evaluation.submitFailed') || 'Failed to submit evaluation');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const currentPrinciple = GOVERNANCE_PRINCIPLES[currentPrincipleIndex];
+
   const styles = {
-    container: {
-      minHeight: '100vh',
-      background: '#f9fafb',
+    container: { padding: '24px', maxWidth: '1200px', margin: '0 auto' },
+    header: { marginBottom: '32px' },
+    title: { fontSize: '28px', fontWeight: 'bold', color: '#111827', marginBottom: '8px' },
+    subtitle: { fontSize: '16px', color: '#6b7280' },
+    progressBar: {
+      height: '8px',
+      background: '#e5e7eb',
+      borderRadius: '4px',
+      overflow: 'hidden',
+      marginBottom: '32px',
     },
-    header: {
-      background: 'white',
-      borderBottom: '1px solid #e5e7eb',
-      padding: '16px 0',
-      position: 'sticky',
-      top: 0,
-      zIndex: 40,
-      boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-    },
-    headerContent: {
-      maxWidth: '1280px',
-      margin: '0 auto',
-      padding: '0 24px',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-    },
-    logo: {
-      display: 'flex',
-      alignItems: 'center',
-      gap: '8px',
-      cursor: 'pointer',
-    },
-    logoIcon: {
-      width: '40px',
-      height: '40px',
+    progressFill: {
+      height: '100%',
       background: '#2563eb',
-      borderRadius: '8px',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      fontSize: '20px',
-    },
-    logoText: {
-      fontSize: '20px',
-      fontWeight: 'bold',
-      color: '#111827',
-    },
-    userSection: {
-      display: 'flex',
-      alignItems: 'center',
-      gap: '16px',
-    },
-    userInfo: {
-      display: 'flex',
-      alignItems: 'center',
-      gap: '8px',
-      padding: '8px 12px',
-      background: '#f3f4f6',
-      borderRadius: '8px',
-    },
-    logoutBtn: {
-      padding: '8px 16px',
-      background: '#ef4444',
-      color: 'white',
-      border: 'none',
-      borderRadius: '8px',
-      cursor: 'pointer',
-      fontSize: '14px',
-      fontWeight: '500',
-    },
-    layout: {
-      display: 'flex',
-      maxWidth: '1280px',
-      margin: '0 auto',
-    },
-    sidebar: {
-      width: '250px',
-      background: 'white',
-      borderRight: '1px solid #e5e7eb',
-      padding: '24px 0',
-      height: 'calc(100vh - 64px)',
-      position: 'sticky',
-      top: '64px',
-    },
-    menuItem: {
-      display: 'flex',
-      alignItems: 'center',
-      gap: '12px',
-      padding: '12px 24px',
-      color: '#374151',
-      cursor: 'pointer',
-      fontSize: '14px',
-      fontWeight: '500',
-    },
-    menuItemActive: {
-      background: '#eff6ff',
-      color: '#2563eb',
-      borderLeft: '3px solid #2563eb',
-    },
-    main: {
-      flex: 1,
-      padding: '32px 24px',
+      transition: 'width 0.3s',
     },
     card: {
       background: 'white',
       borderRadius: '12px',
+      padding: '32px',
       boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-      padding: '40px',
-      maxWidth: '800px',
-      margin: '0 auto',
     },
-    title: {
-      fontSize: '32px',
-      fontWeight: 'bold',
-      color: '#111827',
-      marginBottom: '8px',
-    },
-    subtitle: {
-      color: '#6b7280',
-      marginBottom: '32px',
-      lineHeight: '1.6',
-    },
-    infoBox: {
-      background: '#eff6ff',
-      border: '1px solid #bfdbfe',
-      borderRadius: '8px',
-      padding: '16px',
-      marginBottom: '32px',
-    },
-    infoTitle: {
+    formGroup: { marginBottom: '24px' },
+    label: {
+      display: 'block',
       fontSize: '14px',
       fontWeight: '600',
-      color: '#1e40af',
-      marginBottom: '8px',
-      display: 'flex',
-      alignItems: 'center',
-      gap: '8px',
-    },
-    infoText: {
-      fontSize: '14px',
-      color: '#1e40af',
-      lineHeight: '1.6',
-    },
-    form: {
-      display: 'flex',
-      flexDirection: 'column',
-      gap: '24px',
-    },
-    inputGroup: {
-      display: 'flex',
-      flexDirection: 'column',
-    },
-    label: {
-      marginBottom: '8px',
-      fontSize: '14px',
-      fontWeight: '500',
       color: '#374151',
+      marginBottom: '8px',
     },
     input: {
+      width: '100%',
       padding: '12px 16px',
       border: '1px solid #d1d5db',
       borderRadius: '8px',
-      fontSize: '16px',
+      fontSize: '15px',
       outline: 'none',
-      transition: 'border 0.2s',
+      transition: 'border-color 0.2s',
+      boxSizing: 'border-box',
     },
     textarea: {
+      width: '100%',
       padding: '12px 16px',
       border: '1px solid #d1d5db',
       borderRadius: '8px',
-      fontSize: '16px',
+      fontSize: '15px',
       outline: 'none',
       minHeight: '100px',
       resize: 'vertical',
-      fontFamily: 'inherit',
+      boxSizing: 'border-box',
     },
-    error: {
-      color: '#ef4444',
-      fontSize: '14px',
-      marginTop: '6px',
-    },
-    buttonGroup: {
-      display: 'flex',
-      gap: '12px',
-      justifyContent: 'flex-end',
-      marginTop: '24px',
-    },
-    cancelBtn: {
-      padding: '12px 24px',
-      background: '#f3f4f6',
-      color: '#374151',
-      border: 'none',
-      borderRadius: '8px',
-      cursor: 'pointer',
-      fontSize: '14px',
-      fontWeight: '500',
-      transition: 'background 0.2s',
-    },
-    submitBtn: {
+    button: {
       padding: '12px 24px',
       background: '#2563eb',
       color: 'white',
       border: 'none',
       borderRadius: '8px',
+      fontSize: '15px',
+      fontWeight: '600',
       cursor: 'pointer',
+      transition: 'background 0.2s',
+    },
+    buttonSecondary: {
+      padding: '12px 24px',
+      background: '#f3f4f6',
+      color: '#374151',
+      border: 'none',
+      borderRadius: '8px',
+      fontSize: '15px',
+      fontWeight: '600',
+      cursor: 'pointer',
+      transition: 'background 0.2s',
+      marginRight: '12px',
+    },
+    error: {
+      padding: '12px 16px',
+      background: '#fee2e2',
+      border: '1px solid #fecaca',
+      borderRadius: '8px',
+      color: '#dc2626',
+      marginBottom: '16px',
+    },
+    principleHeader: {
+      padding: '20px',
+      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+      borderRadius: '12px',
+      color: 'white',
+      marginBottom: '24px',
+    },
+    principleTitle: { fontSize: '24px', fontWeight: 'bold', marginBottom: '8px' },
+    practiceCard: {
+      padding: '20px',
+      background: '#f9fafb',
+      borderRadius: '8px',
+      marginBottom: '16px',
+    },
+    practiceTitle: {
+      fontSize: '16px',
+      fontWeight: '600',
+      color: '#111827',
+      marginBottom: '16px',
+    },
+    criterionRow: {
+      padding: '16px',
+      background: 'white',
+      borderRadius: '8px',
+      marginBottom: '12px',
+      border: '1px solid #e5e7eb',
+    },
+    criterionText: {
+      fontSize: '14px',
+      color: '#374151',
+      marginBottom: '12px',
+      fontWeight: '500',
+    },
+    maturityButtons: {
+      display: 'grid',
+      gridTemplateColumns: 'repeat(4, 1fr)',
+      gap: '8px',
+      marginBottom: '12px',
+    },
+    maturityButton: {
+      padding: '8px',
+      border: '2px solid #e5e7eb',
+      borderRadius: '6px',
+      background: 'white',
+      cursor: 'pointer',
+      fontSize: '12px',
+      textAlign: 'center',
+      transition: 'all 0.2s',
+    },
+    maturityButtonActive: {
+      borderColor: '#2563eb',
+      background: '#eff6ff',
+      color: '#2563eb',
+      fontWeight: '600',
+    },
+    navigation: {
+      display: 'flex',
+      justifyContent: 'space-between',
+      marginTop: '32px',
+      paddingTop: '24px',
+      borderTop: '1px solid #e5e7eb',
+    },
+    saveButton: {
+      padding: '10px 20px',
+      background: '#10b981',
+      color: 'white',
+      border: 'none',
+      borderRadius: '8px',
       fontSize: '14px',
       fontWeight: '600',
+      cursor: 'pointer',
       transition: 'background 0.2s',
     },
   };
-  
-  return (
-    <div style={styles.container}>
-      {/* Header */}
-      <header style={styles.header}>
-        <div style={styles.headerContent}>
-          <div style={styles.logo} onClick={() => navigate('/organization/dashboard')}>
-            <div style={styles.logoIcon}>🛡️</div>
-            <span style={styles.logoText}>Governance Platform</span>
-          </div>
-          
-          <div style={styles.userSection}>
-            <div style={styles.userInfo}>
-              <span>👤</span>
-              <span style={{ fontSize: '14px', fontWeight: '500' }}>
-                {user.fullName || 'User'}
-              </span>
+
+  if (loading) {
+    return (
+      <div style={styles.container}>
+        <div style={{ textAlign: 'center', padding: '60px' }}>
+          <div style={{ fontSize: '48px', marginBottom: '16px' }}>⏳</div>
+          <p>{t('common.loading')}</p>
+        </div>
+      </div>
+    );
+  }
+
+  // STEP 1: Basic Information
+  if (step === 1) {
+    return (
+      <div style={styles.container}>
+        <div style={styles.header}>
+          <h1 style={styles.title}>
+            {evaluationId ? t('evaluation.editEvaluation') : t('evaluation.createEvaluation')}
+          </h1>
+          <p style={styles.subtitle}>{t('evaluation.evaluationDetails')}</p>
+        </div>
+
+        <div style={styles.card}>
+          {error && <div style={styles.error}>⚠️ {error}</div>}
+
+          <form onSubmit={handleBasicInfoSubmit}>
+            <div style={styles.formGroup}>
+              <label style={styles.label}>{t('evaluation.evaluationName')} *</label>
+              <input
+                type="text"
+                style={styles.input}
+                placeholder={t('evaluation.enterEvaluationName')}
+                value={evaluationData.name}
+                onChange={(e) =>
+                  setEvaluationData({ ...evaluationData, name: e.target.value })
+                }
+                required
+              />
             </div>
-            <button 
-              onClick={handleLogout}
-              style={styles.logoutBtn}
-              onMouseEnter={(e) => e.target.style.background = '#dc2626'}
-              onMouseLeave={(e) => e.target.style.background = '#ef4444'}
-            >
-              Logout
-            </button>
+
+            <div style={styles.formGroup}>
+              <label style={styles.label}>{t('evaluation.period')} *</label>
+              <input
+                type="text"
+                style={styles.input}
+                placeholder={t('evaluation.enterPeriod')}
+                value={evaluationData.period}
+                onChange={(e) =>
+                  setEvaluationData({ ...evaluationData, period: e.target.value })
+                }
+                required
+              />
+            </div>
+
+            <div style={styles.formGroup}>
+              <label style={styles.label}>{t('evaluation.description')}</label>
+              <textarea
+                style={styles.textarea}
+                placeholder={t('evaluation.enterDescription')}
+                value={evaluationData.description}
+                onChange={(e) =>
+                  setEvaluationData({ ...evaluationData, description: e.target.value })
+                }
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <button
+                type="button"
+                style={styles.buttonSecondary}
+                onClick={() => navigate('/organization/evaluations')}
+              >
+                {t('common.cancel')}
+              </button>
+              <button
+                type="submit"
+                style={styles.button}
+                disabled={loading}
+                onMouseEnter={(e) => (e.target.style.background = '#1d4ed8')}
+                onMouseLeave={(e) => (e.target.style.background = '#2563eb')}
+              >
+                {loading ? t('common.loading') : t('common.next')} →
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  // STEP 2: Fill Criteria
+  const maturityLevels = [
+    { value: 0, label: t('evaluation.notExists') },
+    { value: 1, label: t('evaluation.inDevelopment') },
+    { value: 2, label: t('evaluation.completed') },
+    { value: 3, label: t('evaluation.validated') },
+  ];
+
+  const totalPrinciples = GOVERNANCE_PRINCIPLES.length;
+  const progress = ((currentPrincipleIndex + 1) / totalPrinciples) * 100;
+
+  return (
+    <div ref={topRef} style={styles.container}>
+      <div style={styles.header}>
+        <h1 style={styles.title}>{evaluationData.name}</h1>
+        <p style={styles.subtitle}>
+          {t('evaluation.principle')} {currentPrincipleIndex + 1} / {totalPrinciples}
+        </p>
+      </div>
+
+      <div style={styles.progressBar}>
+        <div style={{ ...styles.progressFill, width: `${progress}%` }} />
+      </div>
+
+      <div style={styles.card}>
+        <div style={styles.principleHeader}>
+          <div style={styles.principleTitle}>
+            {t('evaluation.principle')} {currentPrinciple.number}: {currentPrinciple.name}
           </div>
         </div>
-      </header>
-      
-      <div style={styles.layout}>
-        {/* Sidebar */}
-        <aside style={styles.sidebar}>
-          <div 
-            style={styles.menuItem}
-            onClick={() => navigate('/organization/dashboard')}
-            onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
-            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-          >
-            <span>📊</span>
-            <span>Dashboard</span>
-          </div>
-          <div style={{...styles.menuItem, ...styles.menuItemActive}}>
-            <span>📝</span>
-            <span>Evaluations</span>
-          </div>
-          <div 
-            style={styles.menuItem}
-            onClick={() => navigate('/organization/results')}
-            onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
-            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-          >
-            <span>📈</span>
-            <span>Results</span>
-          </div>
-          <div 
-            style={styles.menuItem}
-            onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
-            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-          >
-            <span>⚙️</span>
-            <span>Settings</span>
-          </div>
-        </aside>
-        
-        {/* Main Content */}
-        <main style={styles.main}>
-          <div style={styles.card}>
-            <h1 style={styles.title}>Start New Evaluation</h1>
-            <p style={styles.subtitle}>
-              Create a new governance evaluation based on the 12 principles framework
-            </p>
-            
-            <div style={styles.infoBox}>
-              <div style={styles.infoTitle}>
-                <span>📋</span>
-                <span>What to expect:</span>
-              </div>
-              <div style={styles.infoText}>
-                This evaluation covers <strong>12 governance principles</strong> with multiple 
-                criteria for each. You'll assess your organization's maturity level (0-3) for 
-                each criterion and upload supporting evidence.
-              </div>
+
+        {currentPrinciple.practices.map((practice) => (
+          <div key={practice.id} style={styles.practiceCard}>
+            <div style={styles.practiceTitle}>
+              {t('evaluation.practice')} {practice.id}: {practice.name}
             </div>
-            
-            <form onSubmit={handleSubmit} style={styles.form}>
-              <div style={styles.inputGroup}>
-                <label style={styles.label}>
-                  Evaluation Name <span style={{ color: '#ef4444' }}>*</span>
-                </label>
-                <input
-                  type="text"
-                  name="name"
-                  placeholder="e.g., Q1 2025 Governance Evaluation"
-                  value={formData.name}
-                  onChange={handleChange}
-                  style={styles.input}
-                  onFocus={(e) => e.target.style.borderColor = '#2563eb'}
-                  onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
-                />
-                {errors.name && <p style={styles.error}>{errors.name}</p>}
-              </div>
-              
-              <div style={styles.inputGroup}>
-                <label style={styles.label}>
-                  Description (Optional)
-                </label>
-                <textarea
-                  name="description"
-                  placeholder="Brief description of this evaluation..."
-                  value={formData.description}
-                  onChange={handleChange}
-                  style={styles.textarea}
-                  onFocus={(e) => e.target.style.borderColor = '#2563eb'}
-                  onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
-                />
-              </div>
-              
-              <div style={styles.inputGroup}>
-                <label style={styles.label}>
-                  Evaluation Period <span style={{ color: '#ef4444' }}>*</span>
-                </label>
-                <input
-                  type="text"
-                  name="period"
-                  placeholder="e.g., Q1 2025, January-March 2025"
-                  value={formData.period}
-                  onChange={handleChange}
-                  style={styles.input}
-                  onFocus={(e) => e.target.style.borderColor = '#2563eb'}
-                  onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
-                />
-                {errors.period && <p style={styles.error}>{errors.period}</p>}
-              </div>
-              
-              <div style={styles.buttonGroup}>
-                <button
-                  type="button"
-                  style={styles.cancelBtn}
-                  onClick={() => navigate('/organization/evaluations')}
-                  onMouseEnter={(e) => e.target.style.background = '#e5e7eb'}
-                  onMouseLeave={(e) => e.target.style.background = '#f3f4f6'}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  style={styles.submitBtn}
-                  onMouseEnter={(e) => e.target.style.background = '#1d4ed8'}
-                  onMouseLeave={(e) => e.target.style.background = '#2563eb'}
-                >
-                  Create Evaluation →
-                </button>
-              </div>
-            </form>
+
+            {practice.criteria.map((criterion) => {
+              const key = `${currentPrinciple.id}-${practice.id}-${criterion.id}`;
+              const response = responses[key] || {};
+
+              return (
+                <div key={criterion.id} style={styles.criterionRow}>
+                  <div style={styles.criterionText}>
+                    <strong>C{criterion.id}:</strong> {criterion.text}
+                  </div>
+
+                  <div style={styles.maturityButtons}>
+                    {maturityLevels.map((level) => (
+                      <button
+                        key={level.value}
+                        type="button"
+                        style={{
+                          ...styles.maturityButton,
+                          ...(response.maturityLevel === level.value
+                            ? styles.maturityButtonActive
+                            : {}),
+                        }}
+                        onClick={() =>
+                          handleResponseChange(
+                            currentPrinciple.id,
+                            practice.id,
+                            criterion.id,
+                            'maturityLevel',
+                            level.value
+                          )
+                        }
+                      >
+                        <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>
+                          {level.value}
+                        </div>
+                        <div style={{ fontSize: '10px' }}>{level.label}</div>
+                      </button>
+                    ))}
+                  </div>
+
+                  <div style={styles.formGroup}>
+                    <label style={{ ...styles.label, fontSize: '13px' }}>
+                      {t('evaluation.evidence')}
+                    </label>
+                    <textarea
+                      style={{ ...styles.textarea, minHeight: '60px', fontSize: '13px' }}
+                      placeholder={t('evaluation.evidence')}
+                      value={response.evidence || ''}
+                      onChange={(e) =>
+                        handleResponseChange(
+                          currentPrinciple.id,
+                          practice.id,
+                          criterion.id,
+                          'evidence',
+                          e.target.value
+                        )
+                      }
+                    />
+                  </div>
+
+                  <div style={styles.formGroup}>
+                    <label style={{ ...styles.label, fontSize: '13px' }}>
+                      {t('evaluation.comments')}
+                    </label>
+                    <textarea
+                      style={{ ...styles.textarea, minHeight: '60px', fontSize: '13px' }}
+                      placeholder={t('evaluation.comments')}
+                      value={response.comments || ''}
+                      onChange={(e) =>
+                        handleResponseChange(
+                          currentPrinciple.id,
+                          practice.id,
+                          criterion.id,
+                          'comments',
+                          e.target.value
+                        )
+                      }
+                    />
+                  </div>
+                </div>
+              );
+            })}
           </div>
-        </main>
+        ))}
+
+        <div style={styles.navigation}>
+          <div>
+            <button
+              type="button"
+              style={styles.buttonSecondary}
+              onClick={() => {
+                if (currentPrincipleIndex > 0) {
+                  setCurrentPrincipleIndex(currentPrincipleIndex - 1);
+                } else {
+                  setStep(1);
+                }
+              }}
+            >
+              ← {t('common.previous')}
+            </button>
+            <button
+              type="button"
+              style={styles.saveButton}
+              onClick={handleSaveProgress}
+              disabled={saving}
+              onMouseEnter={(e) => (e.target.style.background = '#059669')}
+              onMouseLeave={(e) => (e.target.style.background = '#10b981')}
+            >
+              {saving ? '💾 Saving...' : `💾 ${t('evaluation.saveProgress')}`}
+            </button>
+          </div>
+
+          <div>
+            {currentPrincipleIndex < totalPrinciples - 1 ? (
+              <button
+                type="button"
+                style={styles.button}
+                onClick={() => setCurrentPrincipleIndex(currentPrincipleIndex + 1)}
+                onMouseEnter={(e) => (e.target.style.background = '#1d4ed8')}
+                onMouseLeave={(e) => (e.target.style.background = '#2563eb')}
+              >
+                {t('common.next')} →
+              </button>
+            ) : (
+              <button
+                type="button"
+                style={{ ...styles.button, background: '#10b981' }}
+                onClick={handleSubmitEvaluation}
+                disabled={saving}
+                onMouseEnter={(e) => (e.target.style.background = '#059669')}
+                onMouseLeave={(e) => (e.target.style.background = '#10b981')}
+              >
+                {saving ? 'Submitting...' : `✓ ${t('evaluation.submitEvaluation')}`}
+              </button>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );

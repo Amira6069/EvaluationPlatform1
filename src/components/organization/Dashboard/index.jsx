@@ -1,10 +1,11 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import './index.css';
-import App from './App.jsx';
+import App from './App';
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
-  // ❌ REMOVE React.StrictMode temporarily
-  <App />
+  // <React.StrictMode>  {/* ❌ Comment this out */}
+    <App />
+  // </React.StrictMode>
 );

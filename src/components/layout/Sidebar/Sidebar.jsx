@@ -1,52 +1,124 @@
-import React from 'react';
-import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, FileText, Settings } from 'lucide-react';
-import clsx from 'clsx';
+import React, { useState, useEffect } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
+import { useTranslation } from 'react-i18next';
+import { ROUTES, STORAGE_KEYS } from "../../../utils/constants";
 
 const Sidebar = () => {
+  const navigate = useNavigate();
   const location = useLocation();
-  
-  const menuItems = [
-    { 
-      label: 'Dashboard', 
-      icon: LayoutDashboard, 
-      path: '/organization/dashboard' 
+  const { t } = useTranslation();
+  const [user, setUser] = useState(null);
+
+  useEffect(() => {
+    const userStr = localStorage.getItem(STORAGE_KEYS.USER);
+    if (userStr) {
+      setUser(JSON.parse(userStr));
+    }
+  }, []);
+
+  const isActive = (path) => location.pathname === path;
+
+  const getMenuItems = () => {
+    if (!user) return [];
+
+    if (user.role === "ORGANIZATION") {
+      return [
+        { path: ROUTES.ORG_DASHBOARD, icon: "📊", label: t('nav.dashboard') },
+        { path: ROUTES.ORG_EVALUATIONS, icon: "📋", label: t('nav.evaluations') },
+        { path: ROUTES.ORG_RESULTS, icon: "📈", label: t('nav.results') },
+        { path: ROUTES.ORG_SETTINGS, icon: "⚙️", label: t('nav.settings') },
+      ];
+    }
+
+    if (user.role === "EVALUATOR") {
+      return [
+        { path: ROUTES.EVAL_DASHBOARD, icon: "📊", label: t('nav.dashboard') },
+        { path: "/evaluator/queue", icon: "📋", label: t('nav.queue') },
+      ];
+    }
+
+    if (user.role === "ADMIN") {
+      return [
+        { path: ROUTES.ADMIN_DASHBOARD, icon: "📊", label: t('nav.dashboard') },
+        { path: ROUTES.ADMIN_USERS, icon: "👥", label: t('nav.users') },
+        { path: ROUTES.ADMIN_EVALUATIONS, icon: "📋", label: t('nav.evaluations') },
+        { path: ROUTES.ADMIN_GOVERNANCE, icon: "🏛️", label: t('nav.governance') },
+      ];
+    }
+
+    return [];
+  };
+
+  const menuItems = getMenuItems();
+
+  const styles = {
+    sidebar: {
+      width: "220px",
+      background: "white",
+      borderRight: "1px solid #e5e7eb",
+      position: "fixed",
+      left: 0,
+      top: "64px",
+      height: "calc(100vh - 64px)",
+      display: "flex",
+      flexDirection: "column",
+      zIndex: 40,
+      overflowY: "auto",
     },
-    { 
-      label: 'Evaluations', 
-      icon: FileText, 
-      path: '/organization/evaluations' 
+    nav: {
+      flex: 1,
+      padding: "24px 16px",
     },
-    { 
-      label: 'Settings', 
-      icon: Settings, 
-      path: '/organization/settings' 
+    menuItem: {
+      display: "flex",
+      alignItems: "center",
+      gap: "12px",
+      padding: "12px 16px",
+      marginBottom: "8px",
+      borderRadius: "8px",
+      cursor: "pointer",
+      transition: "all 0.2s",
+      color: "#6b7280",
+      fontSize: "15px",
+      fontWeight: "500",
+      textDecoration: "none",
     },
-  ];
-  
+    menuItemActive: {
+      background: "#eff6ff",
+      color: "#2563eb",
+      fontWeight: "600",
+    },
+  };
+
   return (
-    <aside className="fixed top-16 left-0 w-64 h-[calc(100vh-4rem)] bg-white border-r border-gray-200 overflow-y-auto">
-      <nav className="p-4 space-y-2">
-        {menuItems.map((item) => {
-          const Icon = item.icon;
-          const isActive = location.pathname === item.path;
-          
-          return (
-            <Link
-              key={item.path}
-              to={item.path}
-              className={clsx(
-                'flex items-center gap-3 px-4 py-3 rounded-lg transition-all',
-                isActive
-                  ? 'bg-blue-50 text-blue-700 font-medium shadow-sm'
-                  : 'text-gray-700 hover:bg-gray-100'
-              )}
-            >
-              <Icon size={20} className={isActive ? 'text-blue-600' : 'text-gray-500'} />
-              <span>{item.label}</span>
-            </Link>
-          );
-        })}
+    <aside style={styles.sidebar}>
+      <nav style={styles.nav}>
+        {menuItems.map((item) => (
+          <div
+            key={item.path}
+            style={{
+              ...styles.menuItem,
+              ...(isActive(item.path) ? styles.menuItemActive : {}),
+            }}
+            onClick={() => {
+              console.log('🔗 Navigating to:', item.path);
+              navigate(item.path);
+            }}
+            onMouseEnter={(e) => {
+              if (!isActive(item.path)) {
+                e.currentTarget.style.background = "#f9fafb";
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!isActive(item.path)) {
+                e.currentTarget.style.background = "transparent";
+              }
+            }}
+          >
+            <span style={{ fontSize: "18px" }}>{item.icon}</span>
+            <span>{item.label}</span>
+          </div>
+        ))}
       </nav>
     </aside>
   );
