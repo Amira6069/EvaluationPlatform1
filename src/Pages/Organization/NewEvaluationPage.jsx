@@ -1,27 +1,20 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import {
-  createEvaluation,
-  updateEvaluation,
-  getEvaluationById,
-  saveResponses,
-  submitEvaluation,
-} from '../../Services/evaluationService';
-import { GOVERNANCE_PRINCIPLES } from '../../utils/constants';
+import evaluationService from '../../Services/evaluationService';
+import governanceService from '../../Services/governanceService';
 
 const NewEvaluationPage = () => {
   const navigate = useNavigate();
-  const { id } = useParams(); // If editing existing evaluation
+  const { id } = useParams();
   const { t } = useTranslation();
-  const topRef = useRef(null); // ✅ For auto-scroll
+  const topRef = useRef(null);
 
-  const [step, setStep] = useState(1); // 1 = Basic Info, 2 = Fill Criteria
+  const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  // Basic evaluation info
   const [evaluationData, setEvaluationData] = useState({
     name: '',
     description: '',
@@ -30,51 +23,57 @@ const NewEvaluationPage = () => {
 
   const [evaluationId, setEvaluationId] = useState(id || null);
   const [currentPrincipleIndex, setCurrentPrincipleIndex] = useState(0);
-  
-  // Responses: { "1-1-1": { maturityLevel: 2, evidence: "...", comments: "..." } }
   const [responses, setResponses] = useState({});
 
+  // ✅ DYNAMIC CRITERIA STATE
+  const [principles, setPrinciples] = useState([]);
+  const [loadingPrinciples, setLoadingPrinciples] = useState(true);
+
   useEffect(() => {
+    loadPrinciples(); // ✅ Load dynamic criteria first
+    
     if (id) {
       loadEvaluation(id);
     }
   }, [id]);
 
-  // ✅ Auto-scroll to top when principle changes
   useEffect(() => {
     if (topRef.current && step === 2) {
       topRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   }, [currentPrincipleIndex, step]);
 
+  // ✅ LOAD DYNAMIC PRINCIPLES FROM API
+  const loadPrinciples = async () => {
+    try {
+      setLoadingPrinciples(true);
+      const framework = await governanceService.getFramework();
+      console.log('✅ Loaded dynamic framework:', framework.length, 'principles');
+      setPrinciples(framework);
+    } catch (error) {
+      console.error('❌ Error loading governance framework:', error);
+      alert('Failed to load evaluation criteria. Please refresh the page.');
+    } finally {
+      setLoadingPrinciples(false);
+    }
+  };
+
   const loadEvaluation = async (evalId) => {
     try {
       setLoading(true);
-      const response = await getEvaluationById(evalId);
-      const { evaluation, responses: existingResponses } = response.data;
+      const response = await evaluationService.getEvaluationById(evalId);
+      const evaluation = response;
 
       setEvaluationData({
         name: evaluation.name,
-        description: evaluation.description,
+        description: evaluation.description || '',
         period: evaluation.period,
       });
 
-      // Convert responses array to object
-      const responsesObj = {};
-      existingResponses.forEach((r) => {
-        const key = `${r.principleId}-${r.practiceId}-${r.criterionId}`;
-        responsesObj[key] = {
-          maturityLevel: r.maturityLevel,
-          evidence: r.evidence || '',
-          comments: r.comments || '',
-        };
-      });
-
-      setResponses(responsesObj);
-      setStep(2); // Go directly to filling criteria if editing
+      setStep(2);
     } catch (err) {
       console.error('Error loading evaluation:', err);
-      setError(t('evaluation.loadFailed'));
+      setError('Failed to load evaluation');
     } finally {
       setLoading(false);
     }
@@ -84,7 +83,7 @@ const NewEvaluationPage = () => {
     e.preventDefault();
     
     if (!evaluationData.name || !evaluationData.period) {
-      setError(t('evaluation.nameRequired') || 'Name and period are required');
+      setError(t('ev.fillAllFields') || 'Name and period are required');
       return;
     }
 
@@ -93,20 +92,18 @@ const NewEvaluationPage = () => {
       setError('');
 
       if (evaluationId) {
-        // Update existing
-        await updateEvaluation(evaluationId, evaluationData);
+        await evaluationService.updateEvaluation(evaluationId, evaluationData);
         console.log('✅ Evaluation updated');
       } else {
-        // Create new
-        const response = await createEvaluation(evaluationData);
-        setEvaluationId(response.data.evaluationId);
-        console.log('✅ Evaluation created:', response.data.evaluationId);
+        const response = await evaluationService.createEvaluation(evaluationData);
+        setEvaluationId(response.evaluationId);
+        console.log('✅ Evaluation created:', response.name, ' (ID:', response.evaluationId, ')');
       }
 
-      setStep(2); // Move to criteria filling
+      setStep(2);
     } catch (err) {
       console.error('Error saving evaluation:', err);
-      setError(t('evaluation.createFailed'));
+      setError(t('evaluation.createFailed') || 'Failed to create evaluation');
     } finally {
       setLoading(false);
     }
@@ -129,7 +126,6 @@ const NewEvaluationPage = () => {
     try {
       setSaving(true);
       
-      // Convert responses object to array
       const responsesArray = Object.keys(responses).map((key) => {
         const [principleId, practiceId, criterionId] = key.split('-').map(Number);
         return {
@@ -137,18 +133,19 @@ const NewEvaluationPage = () => {
           practiceId,
           criterionId,
           maturityLevel: responses[key].maturityLevel,
-          evidence: responses[key].evidence,
-          comments: responses[key].comments,
+          evidence: responses[key].evidence || '',
+          comments: responses[key].comments || '',
         };
       });
 
-      await saveResponses(evaluationId, responsesArray);
+      console.log('📤 Saving', responsesArray.length, 'responses');
+      await evaluationService.saveResponses(evaluationId, responsesArray);
       console.log('✅ Progress saved');
       
-      alert(t('evaluation.progressSaved') || 'Progress saved successfully!');
+      alert(t('ev.progressSaved') || 'Progress saved successfully!');
     } catch (err) {
       console.error('Error saving progress:', err);
-      alert(t('evaluation.saveFailed') || 'Failed to save progress');
+      alert('Failed to save progress: ' + (err.response?.data?.error || err.message));
     } finally {
       setSaving(false);
     }
@@ -157,15 +154,14 @@ const NewEvaluationPage = () => {
   const handleSubmitEvaluation = async () => {
     if (!evaluationId) return;
 
-    // Check if all criteria are filled
     let totalCriteria = 0;
     let filledCriteria = 0;
 
-    GOVERNANCE_PRINCIPLES.forEach((principle) => {
+    principles.forEach((principle) => {
       principle.practices.forEach((practice) => {
         practice.criteria.forEach((criterion) => {
           totalCriteria++;
-          const key = `${principle.id}-${practice.id}-${criterion.id}`;
+          const key = `${principle.principleId}-${practice.practiceId}-${criterion.criterionId}`;
           if (responses[key]?.maturityLevel != null) {
             filledCriteria++;
           }
@@ -183,7 +179,6 @@ const NewEvaluationPage = () => {
     try {
       setSaving(true);
 
-      // Save responses first
       const responsesArray = Object.keys(responses).map((key) => {
         const [principleId, practiceId, criterionId] = key.split('-').map(Number);
         return {
@@ -196,29 +191,23 @@ const NewEvaluationPage = () => {
         };
       });
 
-      await saveResponses(evaluationId, responsesArray);
-
-      // Submit evaluation
-      const result = await submitEvaluation(evaluationId);
+      await evaluationService.saveResponses(evaluationId, responsesArray);
+      const result = await evaluationService.submitEvaluation(evaluationId);
       
-      console.log('✅ Evaluation submitted:', result.data);
+      console.log('✅ Evaluation submitted:', result);
       
       alert(
-        `${t('evaluation.evaluationSubmitted')}\n${t('evaluation.score')}: ${Math.round(
-          result.data.score
-        )}%`
+        `${t('evaluation.evaluationSubmitted')}\nScore: ${Math.round(result.totalScore || 0)}%`
       );
 
       navigate('/organization/evaluations');
     } catch (err) {
       console.error('Error submitting evaluation:', err);
-      alert(t('evaluation.submitFailed') || 'Failed to submit evaluation');
+      alert('Failed to submit: ' + (err.response?.data?.error || err.message));
     } finally {
       setSaving(false);
     }
   };
-
-  const currentPrinciple = GOVERNANCE_PRINCIPLES[currentPrincipleIndex];
 
   const styles = {
     container: { padding: '24px', maxWidth: '1200px', margin: '0 auto' },
@@ -378,12 +367,12 @@ const NewEvaluationPage = () => {
     },
   };
 
-  if (loading) {
+  if (loading || loadingPrinciples) {
     return (
       <div style={styles.container}>
         <div style={{ textAlign: 'center', padding: '60px' }}>
           <div style={{ fontSize: '48px', marginBottom: '16px' }}>⏳</div>
-          <p>{t('common.loading')}</p>
+          <p>{loadingPrinciples ? 'Loading evaluation criteria...' : t('common.loading')}</p>
         </div>
       </div>
     );
@@ -397,7 +386,7 @@ const NewEvaluationPage = () => {
           <h1 style={styles.title}>
             {evaluationId ? t('evaluation.editEvaluation') : t('evaluation.createEvaluation')}
           </h1>
-          <p style={styles.subtitle}>{t('evaluation.evaluationDetails')}</p>
+          <p style={styles.subtitle}>{t('evaluation.fillAllFields')}</p>
         </div>
 
         <div style={styles.card}>
@@ -409,7 +398,7 @@ const NewEvaluationPage = () => {
               <input
                 type="text"
                 style={styles.input}
-                placeholder={t('evaluation.enterEvaluationName')}
+                placeholder={t('evaluation.enterName')}
                 value={evaluationData.name}
                 onChange={(e) =>
                   setEvaluationData({ ...evaluationData, name: e.target.value })
@@ -419,7 +408,7 @@ const NewEvaluationPage = () => {
             </div>
 
             <div style={styles.formGroup}>
-              <label style={styles.label}>{t('evaluation.period')} *</label>
+              <label style={styles.label}>{t('ev.period')} *</label>
               <input
                 type="text"
                 style={styles.input}
@@ -433,7 +422,7 @@ const NewEvaluationPage = () => {
             </div>
 
             <div style={styles.formGroup}>
-              <label style={styles.label}>{t('evaluation.description')}</label>
+              <label style={styles.label}>{t('ev.description')}</label>
               <textarea
                 style={styles.textarea}
                 placeholder={t('evaluation.enterDescription')}
@@ -459,7 +448,7 @@ const NewEvaluationPage = () => {
                 onMouseEnter={(e) => (e.target.style.background = '#1d4ed8')}
                 onMouseLeave={(e) => (e.target.style.background = '#2563eb')}
               >
-                {loading ? t('common.loading') : t('common.next')} →
+                {loading ? t('common.loading') : t('ev.next')} →
               </button>
             </div>
           </form>
@@ -470,21 +459,33 @@ const NewEvaluationPage = () => {
 
   // STEP 2: Fill Criteria
   const maturityLevels = [
-    { value: 0, label: t('evaluation.notExists') },
-    { value: 1, label: t('evaluation.inDevelopment') },
-    { value: 2, label: t('evaluation.completed') },
-    { value: 3, label: t('evaluation.validated') },
+    { value: 0, label: t('ev.level0') },
+    { value: 1, label: t('ev.level1') },
+    { value: 2, label: t('ev.level2') },
+    { value: 3, label: t('ev.level3') },
   ];
 
-  const totalPrinciples = GOVERNANCE_PRINCIPLES.length;
+  const currentPrinciple = principles[currentPrincipleIndex];
+  const totalPrinciples = principles.length;
   const progress = ((currentPrincipleIndex + 1) / totalPrinciples) * 100;
+
+  if (!currentPrinciple) {
+    return (
+      <div style={styles.container}>
+        <div style={{ textAlign: 'center', padding: '60px' }}>
+          <div style={{ fontSize: '48px', marginBottom: '16px' }}>⚠️</div>
+          <p>No evaluation criteria available. Please contact administrator.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div ref={topRef} style={styles.container}>
       <div style={styles.header}>
         <h1 style={styles.title}>{evaluationData.name}</h1>
         <p style={styles.subtitle}>
-          {t('evaluation.principle')} {currentPrincipleIndex + 1} / {totalPrinciples}
+          {t('ev.principle')} {currentPrincipleIndex + 1} {t('ev.of')} {totalPrinciples}
         </p>
       </div>
 
@@ -495,24 +496,34 @@ const NewEvaluationPage = () => {
       <div style={styles.card}>
         <div style={styles.principleHeader}>
           <div style={styles.principleTitle}>
-            {t('evaluation.principle')} {currentPrinciple.number}: {currentPrinciple.name}
+            {t('ev.principle')}: {currentPrinciple.name}
           </div>
+          {currentPrinciple.description && (
+            <div style={{ fontSize: '14px', opacity: 0.9 }}>
+              {currentPrinciple.description}
+            </div>
+          )}
         </div>
 
         {currentPrinciple.practices.map((practice) => (
-          <div key={practice.id} style={styles.practiceCard}>
+          <div key={practice.practiceId} style={styles.practiceCard}>
             <div style={styles.practiceTitle}>
-              {t('evaluation.practice')} {practice.id}: {practice.name}
+              {t('ev.practice')}: {practice.name}
             </div>
+            {practice.description && (
+              <div style={{ fontSize: '13px', color: '#6b7280', marginBottom: '12px' }}>
+                {practice.description}
+              </div>
+            )}
 
             {practice.criteria.map((criterion) => {
-              const key = `${currentPrinciple.id}-${practice.id}-${criterion.id}`;
+              const key = `${currentPrinciple.principleId}-${practice.practiceId}-${criterion.criterionId}`;
               const response = responses[key] || {};
 
               return (
-                <div key={criterion.id} style={styles.criterionRow}>
+                <div key={criterion.criterionId} style={styles.criterionRow}>
                   <div style={styles.criterionText}>
-                    <strong>C{criterion.id}:</strong> {criterion.text}
+                    <strong>{criterion.description}</strong>
                   </div>
 
                   <div style={styles.maturityButtons}>
@@ -528,9 +539,9 @@ const NewEvaluationPage = () => {
                         }}
                         onClick={() =>
                           handleResponseChange(
-                            currentPrinciple.id,
-                            practice.id,
-                            criterion.id,
+                            currentPrinciple.principleId,
+                            practice.practiceId,
+                            criterion.criterionId,
                             'maturityLevel',
                             level.value
                           )
@@ -546,17 +557,17 @@ const NewEvaluationPage = () => {
 
                   <div style={styles.formGroup}>
                     <label style={{ ...styles.label, fontSize: '13px' }}>
-                      {t('evaluation.evidence')}
+                      {t('ev.evidence')}
                     </label>
                     <textarea
                       style={{ ...styles.textarea, minHeight: '60px', fontSize: '13px' }}
-                      placeholder={t('evaluation.evidence')}
+                      placeholder={t('ev.provideEvidence')}
                       value={response.evidence || ''}
                       onChange={(e) =>
                         handleResponseChange(
-                          currentPrinciple.id,
-                          practice.id,
-                          criterion.id,
+                          currentPrinciple.principleId,
+                          practice.practiceId,
+                          criterion.criterionId,
                           'evidence',
                           e.target.value
                         )
@@ -566,17 +577,17 @@ const NewEvaluationPage = () => {
 
                   <div style={styles.formGroup}>
                     <label style={{ ...styles.label, fontSize: '13px' }}>
-                      {t('evaluation.comments')}
+                      {t('ev.comments')}
                     </label>
                     <textarea
                       style={{ ...styles.textarea, minHeight: '60px', fontSize: '13px' }}
-                      placeholder={t('evaluation.comments')}
+                      placeholder={t('ev.addComments')}
                       value={response.comments || ''}
                       onChange={(e) =>
                         handleResponseChange(
-                          currentPrinciple.id,
-                          practice.id,
-                          criterion.id,
+                          currentPrinciple.principleId,
+                          practice.practiceId,
+                          criterion.criterionId,
                           'comments',
                           e.target.value
                         )
@@ -602,7 +613,7 @@ const NewEvaluationPage = () => {
                 }
               }}
             >
-              ← {t('common.previous')}
+              ← {t('ev.previous')}
             </button>
             <button
               type="button"
@@ -612,7 +623,7 @@ const NewEvaluationPage = () => {
               onMouseEnter={(e) => (e.target.style.background = '#059669')}
               onMouseLeave={(e) => (e.target.style.background = '#10b981')}
             >
-              {saving ? '💾 Saving...' : `💾 ${t('evaluation.saveProgress')}`}
+              {saving ? '💾 Saving...' : `💾 ${t('ev.saveProgress')}`}
             </button>
           </div>
 
@@ -625,7 +636,7 @@ const NewEvaluationPage = () => {
                 onMouseEnter={(e) => (e.target.style.background = '#1d4ed8')}
                 onMouseLeave={(e) => (e.target.style.background = '#2563eb')}
               >
-                {t('common.next')} →
+                {t('ev.next')} →
               </button>
             ) : (
               <button
@@ -636,7 +647,7 @@ const NewEvaluationPage = () => {
                 onMouseEnter={(e) => (e.target.style.background = '#059669')}
                 onMouseLeave={(e) => (e.target.style.background = '#10b981')}
               >
-                {saving ? 'Submitting...' : `✓ ${t('evaluation.submitEvaluation')}`}
+                {saving ? 'Submitting...' : `✓ ${t('ev.submitEvaluation')}`}
               </button>
             )}
           </div>

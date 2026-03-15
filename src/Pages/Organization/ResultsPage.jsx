@@ -1,225 +1,144 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { getMyEvaluations, getEvaluationResult } from '../../Services/evaluationService';
+import evaluationService from '../../Services/evaluationService';
 
 const ResultsPage = () => {
   const navigate = useNavigate();
   const { t } = useTranslation();
+  
   const [evaluations, setEvaluations] = useState([]);
+  const [results, setResults] = useState({});
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [selectedResult, setSelectedResult] = useState(null);
-  const [showModal, setShowModal] = useState(false);
 
   useEffect(() => {
-    fetchResults();
+    loadResults();
   }, []);
 
-  const fetchResults = async () => {
+  const loadResults = async () => {
     try {
-      setLoading(true);
-      console.log('🔍 Fetching results...');
+      const data = await evaluationService.getMyEvaluations();
+      const approvedEvaluations = data.filter(e => e.status === 'APPROVED');
       
-      const response = await getMyEvaluations();
-      const evals = response.data || [];
+      setEvaluations(approvedEvaluations);
+
+      // Load results for each approved evaluation
+      const resultsData = {};
+      for (const evaluation of approvedEvaluations) {
+        try {
+          const result = await evaluationService.getEvaluationResult(evaluation.evaluationId);
+          resultsData[evaluation.evaluationId] = result;
+        } catch (error) {
+          console.error('Error loading result for evaluation:', evaluation.evaluationId);
+        }
+      }
       
-      // Filter only approved evaluations for results
-      const approvedEvals = evals.filter(e => e.status === 'APPROVED');
-      
-      setEvaluations(approvedEvals);
-      console.log('✅ Results loaded:', approvedEvals.length);
-      
-    } catch (err) {
-      console.error('❌ Error fetching results:', err);
-      setError(t('results.loadFailed') || 'Failed to load results');
+      setResults(resultsData);
+    } catch (error) {
+      console.error('❌ Error loading results:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const viewCertificate = async (evaluationId) => {
-    try {
-      console.log('📜 Fetching certificate for:', evaluationId);
-      const response = await getEvaluationResult(evaluationId);
-      setSelectedResult(response.data);
-      setShowModal(true);
-    } catch (error) {
-      console.error('❌ Error fetching certificate:', error);
-      alert('Certificate not available');
-    }
-  };
-
   const getCertificationLevel = (score) => {
-    if (score >= 90) return { label: t('governance.platinum'), color: '#7c3aed', emoji: '💎' };
-    if (score >= 80) return { label: t('governance.gold'), color: '#d97706', emoji: '🥇' };
-    if (score >= 65) return { label: t('governance.silver'), color: '#6b7280', emoji: '🥈' };
-    if (score >= 50) return { label: t('governance.bronze'), color: '#c2410c', emoji: '🥉' };
-    return { label: t('governance.notCertified'), color: '#ef4444', emoji: '📋' };
-  };
-
-  const getScoreColor = (score) => {
-    if (score >= 80) return '#10b981';
-    if (score >= 60) return '#f59e0b';
-    if (score >= 40) return '#f97316';
-    return '#ef4444';
+    if (score >= 90) return { name: t('results.platinum'), color: '#a78bfa' };
+    if (score >= 80) return { name: t('results.gold'), color: '#fbbf24' };
+    if (score >= 65) return { name: t('results.silver'), color: '#9ca3af' };
+    if (score >= 50) return { name: t('results.bronze'), color: '#cd7f32' };
+    return { name: t('results.notCertified'), color: '#6b7280' };
   };
 
   const styles = {
-    container: { padding: '24px' },
+    container: { padding: '24px', maxWidth: '1200px', margin: '0 auto' },
     header: { marginBottom: '32px' },
     title: { fontSize: '28px', fontWeight: 'bold', color: '#111827', marginBottom: '8px' },
     subtitle: { fontSize: '16px', color: '#6b7280' },
-    loading: { textAlign: 'center', padding: '60px', color: '#6b7280' },
-    error: {
-      padding: '12px 16px',
-      background: '#fee2e2',
-      border: '1px solid #fecaca',
-      borderRadius: '8px',
-      color: '#dc2626',
-      marginBottom: '16px',
-    },
-    empty: {
-      textAlign: 'center',
-      padding: '60px',
-      color: '#6b7280',
-      background: 'white',
-      borderRadius: '12px',
-      boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-    },
-    resultsGrid: { display: 'grid', gap: '24px' },
-    resultCard: {
+    grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: '24px' },
+    card: {
       background: 'white',
       borderRadius: '12px',
       padding: '24px',
       boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
       transition: 'transform 0.2s, box-shadow 0.2s',
     },
-    cardHeader: {
-      display: 'flex',
-      justifyContent: 'space-between',
-      alignItems: 'flex-start',
-      marginBottom: '20px',
-    },
-    cardTitle: { fontSize: '20px', fontWeight: '600', color: '#111827', marginBottom: '4px' },
-    cardPeriod: { fontSize: '14px', color: '#6b7280' },
+    cardTitle: { fontSize: '20px', fontWeight: '600', color: '#111827', marginBottom: '8px' },
+    cardSubtitle: { fontSize: '14px', color: '#6b7280', marginBottom: '16px' },
     scoreCircle: {
-      width: '80px',
-      height: '80px',
+      width: '120px',
+      height: '120px',
       borderRadius: '50%',
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',
       justifyContent: 'center',
-      fontSize: '24px',
+      margin: '0 auto 16px',
+      fontSize: '32px',
       fontWeight: 'bold',
-      color: 'white',
     },
-    scoreLabel: { fontSize: '10px', fontWeight: '500', marginTop: '2px' },
-    certificationBadge: {
-      display: 'inline-flex',
-      alignItems: 'center',
-      gap: '8px',
-      padding: '12px 20px',
-      borderRadius: '12px',
-      fontSize: '16px',
+    certBadge: {
+      textAlign: 'center',
+      padding: '8px 16px',
+      borderRadius: '20px',
+      fontSize: '14px',
       fontWeight: '600',
       marginBottom: '16px',
     },
-    detailsGrid: {
-      display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
-      gap: '16px',
-      marginTop: '16px',
-    },
-    detailItem: { padding: '12px', background: '#f9fafb', borderRadius: '8px' },
-    detailLabel: { fontSize: '12px', color: '#6b7280', marginBottom: '4px' },
-    detailValue: { fontSize: '16px', fontWeight: '600', color: '#111827' },
-    buttonGroup: {
-      display: 'flex',
-      gap: '8px',
-      marginTop: '16px',
-    },
-    viewButton: {
-      flex: 1,
-      padding: '10px 20px',
-      background: '#eff6ff',
-      color: '#2563eb',
-      border: 'none',
-      borderRadius: '8px',
-      cursor: 'pointer',
-      fontSize: '14px',
-      fontWeight: '600',
-      transition: 'background 0.2s',
-    },
-    recommendButton: {
-      flex: 1,
-      padding: '10px 20px',
-      background: '#fef3c7',
-      color: '#92400e',
-      border: 'none',
-      borderRadius: '8px',
-      cursor: 'pointer',
-      fontSize: '14px',
-      fontWeight: '600',
-      transition: 'background 0.2s',
-    },
-    modal: {
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      background: 'rgba(0,0,0,0.5)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: 1000,
-    },
-    modalCard: {
-      background: 'white',
-      borderRadius: '16px',
-      padding: '40px',
-      maxWidth: '600px',
-      width: '90%',
-      boxShadow: '0 25px 50px rgba(0,0,0,0.25)',
-      textAlign: 'center',
-    },
-    certificateHeader: { fontSize: '48px', marginBottom: '16px' },
-    certificateTitle: {
-      fontSize: '28px',
-      fontWeight: 'bold',
-      color: '#111827',
-      marginBottom: '8px',
-    },
-    certificateSubtitle: { fontSize: '16px', color: '#6b7280', marginBottom: '32px' },
-    certificateScore: { fontSize: '64px', fontWeight: 'bold', marginBottom: '16px' },
-    certificateLabel: { fontSize: '24px', fontWeight: 'bold', marginBottom: '32px' },
-    certificateDetails: {
-      textAlign: 'left',
-      borderTop: '1px solid #e5e7eb',
-      paddingTop: '24px',
-      marginTop: '24px',
-    },
-    closeButton: {
-      marginTop: '24px',
-      padding: '12px 24px',
+    info: { fontSize: '14px', color: '#6b7280', marginBottom: '8px' },
+    button: {
+      width: '100%',
+      padding: '12px',
       background: '#2563eb',
       color: 'white',
       border: 'none',
       borderRadius: '8px',
-      cursor: 'pointer',
-      fontSize: '15px',
+      fontSize: '14px',
       fontWeight: '600',
+      cursor: 'pointer',
+      marginTop: '16px',
+    },
+    emptyState: {
+      textAlign: 'center',
+      padding: '60px',
+      background: 'white',
+      borderRadius: '12px',
+      boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
     },
   };
 
   if (loading) {
     return (
       <div style={styles.container}>
-        <div style={styles.loading}>
+        <div style={{ textAlign: 'center', padding: '60px' }}>
           <div style={{ fontSize: '48px', marginBottom: '16px' }}>⏳</div>
           <p>{t('common.loading')}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (evaluations.length === 0) {
+    return (
+      <div style={styles.container}>
+        <div style={styles.header}>
+          <h1 style={styles.title}>{t('results.results')}</h1>
+          <p style={styles.subtitle}>{t('results.evaluationResults')}</p>
+        </div>
+
+        <div style={styles.emptyState}>
+          <div style={{ fontSize: '64px', marginBottom: '16px' }}>🏆</div>
+          <h3 style={{ fontSize: '18px', color: '#111827', marginBottom: '8px' }}>
+            {t('results.noResults')}
+          </h3>
+          <p style={{ color: '#6b7280', marginBottom: '24px' }}>
+            Complete and submit an evaluation to see your results here
+          </p>
+          <button
+            style={styles.button}
+            onClick={() => navigate('/organization/evaluations/new')}
+          >
+            {t('evaluation.createEvaluation')}
+          </button>
         </div>
       </div>
     );
@@ -228,164 +147,80 @@ const ResultsPage = () => {
   return (
     <div style={styles.container}>
       <div style={styles.header}>
-        <h1 style={styles.title}>📈 {t('results.evaluationResults')}</h1>
-        <p style={styles.subtitle}>{t('results.resultsWillAppear')}</p>
+        <h1 style={styles.title}>{t('results.results')}</h1>
+        <p style={styles.subtitle}>{t('results.evaluationResults')}</p>
       </div>
 
-      {error && <div style={styles.error}>⚠️ {error}</div>}
+      <div style={styles.grid}>
+        {evaluations.map((evaluation) => {
+          const result = results[evaluation.evaluationId];
+          const cert = getCertificationLevel(evaluation.totalScore || 0);
 
-      {evaluations.length > 0 ? (
-        <div style={styles.resultsGrid}>
-          {evaluations.map((evaluation) => {
-            const score = Math.round(evaluation.totalScore || 0);
-            const certification = getCertificationLevel(score);
-            const scoreColor = getScoreColor(score);
+          return (
+            <div
+              key={evaluation.evaluationId}
+              style={styles.card}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translateY(-4px)';
+                e.currentTarget.style.boxShadow = '0 10px 20px rgba(0,0,0,0.1)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.1)';
+              }}
+            >
+              <div style={styles.cardTitle}>{evaluation.name}</div>
+              <div style={styles.cardSubtitle}>{evaluation.period}</div>
 
-            return (
               <div
-                key={evaluation.evaluationId}
-                style={styles.resultCard}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.transform = 'translateY(-4px)';
-                  e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.transform = 'translateY(0)';
-                  e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.1)';
+                style={{
+                  ...styles.scoreCircle,
+                  background: `linear-gradient(135deg, ${cert.color}20 0%, ${cert.color}40 100%)`,
+                  border: `3px solid ${cert.color}`,
+                  color: cert.color,
                 }}
               >
-                <div style={styles.cardHeader}>
-                  <div>
-                    <h3 style={styles.cardTitle}>{evaluation.name}</h3>
-                    <p style={styles.cardPeriod}>{evaluation.period}</p>
-                  </div>
-                  <div style={{ ...styles.scoreCircle, background: scoreColor }}>
-                    <span>{score}%</span>
-                    <span style={styles.scoreLabel}>{t('evaluation.score')}</span>
-                  </div>
-                </div>
-
-                <div
-                  style={{
-                    ...styles.certificationBadge,
-                    background: certification.color + '20',
-                    color: certification.color,
-                  }}
-                >
-                  <span style={{ fontSize: '24px' }}>{certification.emoji}</span>
-                  <span>{certification.label}</span>
-                </div>
-
-                <div style={styles.detailsGrid}>
-                  <div style={styles.detailItem}>
-                    <div style={styles.detailLabel}>{t('evaluation.status')}</div>
-                    <div style={styles.detailValue}>
-                      {t(`evaluation.${evaluation.status.toLowerCase()}`)}
-                    </div>
-                  </div>
-                  <div style={styles.detailItem}>
-                    <div style={styles.detailLabel}>{t('governance.certificationLevel')}</div>
-                    <div style={styles.detailValue}>{certification.label}</div>
-                  </div>
-                  <div style={styles.detailItem}>
-                    <div style={styles.detailLabel}>
-                      {t('evaluation.created') || 'Created'}
-                    </div>
-                    <div style={styles.detailValue}>
-                      {new Date(evaluation.createdAt).toLocaleDateString()}
-                    </div>
-                  </div>
-                </div>
-
-                <div style={styles.buttonGroup}>
-                  <button
-                    style={styles.viewButton}
-                    onClick={() => viewCertificate(evaluation.evaluationId)}
-                    onMouseEnter={(e) => (e.target.style.background = '#dbeafe')}
-                    onMouseLeave={(e) => (e.target.style.background = '#eff6ff')}
-                  >
-                    📜 View Certificate
-                  </button>
-                  <button
-                    style={styles.recommendButton}
-                    onClick={() => navigate(`/organization/recommendations/${evaluation.evaluationId}`)}
-                    onMouseEnter={(e) => (e.target.style.background = '#fde68a')}
-                    onMouseLeave={(e) => (e.target.style.background = '#fef3c7')}
-                  >
-                    💡 AI Recommendations
-                  </button>
+                <div>{Math.round(evaluation.totalScore || 0)}%</div>
+                <div style={{ fontSize: '12px', fontWeight: 'normal', marginTop: '4px' }}>
+                  {t('results.finalScore')}
                 </div>
               </div>
-            );
-          })}
-        </div>
-      ) : (
-        <div style={styles.empty}>
-          <p style={{ fontSize: '40px', marginBottom: '12px' }}>📊</p>
-          <p style={{ fontWeight: '600', marginBottom: '8px' }}>
-            {t('results.noResults')}
-          </p>
-          <p style={{ fontSize: '14px' }}>{t('results.resultsWillAppear')}</p>
-        </div>
-      )}
 
-      {/* Certificate Modal */}
-      {showModal && selectedResult && (
-        <div style={styles.modal} onClick={() => setShowModal(false)}>
-          <div style={styles.modalCard} onClick={(e) => e.stopPropagation()}>
-            <div style={styles.certificateHeader}>
-              {selectedResult.certificationLabel === 'CERTIFIED_PLATINUM' && '💎'}
-              {selectedResult.certificationLabel === 'CERTIFIED_GOLD' && '🥇'}
-              {selectedResult.certificationLabel === 'CERTIFIED_SILVER' && '🥈'}
-              {selectedResult.certificationLabel === 'CERTIFIED_BRONZE' && '🥉'}
-              {selectedResult.certificationLabel === 'NOT_CERTIFIED' && '📋'}
-            </div>
+              <div
+                style={{
+                  ...styles.certBadge,
+                  background: cert.color + '20',
+                  color: cert.color,
+                }}
+              >
+                🏆 {cert.name}
+              </div>
 
-            <h2 style={styles.certificateTitle}>Governance Certification</h2>
-            <p style={styles.certificateSubtitle}>{selectedResult.evaluationName}</p>
-
-            <div
-              style={{
-                ...styles.certificateScore,
-                color: getScoreColor(selectedResult.finalScore),
-              }}
-            >
-              {Math.round(selectedResult.finalScore)}%
-            </div>
-
-            <div
-              style={{
-                ...styles.certificateLabel,
-                color: getCertificationLevel(selectedResult.finalScore).color,
-              }}
-            >
-              {selectedResult.certificationLabel.replace('CERTIFIED_', '').replace('_', ' ')}
-            </div>
-
-            <div style={styles.certificateDetails}>
-              <p style={{ marginBottom: '8px', fontSize: '14px', color: '#6b7280' }}>
-                <strong>Issued:</strong>{' '}
-                {new Date(selectedResult.issuedDate).toLocaleDateString()}
-              </p>
-              {selectedResult.validUntil && (
-                <p style={{ fontSize: '14px', color: '#6b7280' }}>
-                  <strong>Valid Until:</strong>{' '}
-                  {new Date(selectedResult.validUntil).toLocaleDateString()}
-                </p>
+              {result && (
+                <>
+                  <div style={styles.info}>
+                    <strong>{t('results.issuedDate')}:</strong>{' '}
+                    {new Date(result.createdAt).toLocaleDateString()}
+                  </div>
+                  <div style={styles.info}>
+                    <strong>{t('results.validUntil')}:</strong>{' '}
+                    {new Date(result.expiryDate).toLocaleDateString()}
+                  </div>
+                </>
               )}
-            </div>
 
-            <button
-              style={styles.closeButton}
-              onClick={() => setShowModal(false)}
-              onMouseEnter={(e) => (e.target.style.background = '#1d4ed8')}
-              onMouseLeave={(e) => (e.target.style.background = '#2563eb')}
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      )}
+              <button
+                style={styles.button}
+                onClick={() => navigate(`/organization/recommendations/${evaluation.evaluationId}`)}
+                onMouseEnter={(e) => (e.target.style.background = '#1d4ed8')}
+                onMouseLeave={(e) => (e.target.style.background = '#2563eb')}
+              >
+                {t('results.viewRecommendations')}
+              </button>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 };

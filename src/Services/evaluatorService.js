@@ -1,36 +1,39 @@
 import API from './api';
 
 const evaluatorService = {
-  // Get queue of evaluations to review
-  getQueue: () => {
+  /**
+   * Get evaluation queue (all submitted evaluations)
+   * GET /api/evaluator/queue
+   */
+  getQueue: async () => {
     console.log('📡 Fetching evaluator queue');
-    return API.get('/evaluator/queue');
+    const response = await API.get('/evaluator/queue');
+    return response.data;
   },
 
-  // Get evaluation details for review
-  getEvaluationForReview: (id) => {
-    console.log('📡 Fetching evaluation for review:', id);
-    return API.get(`/evaluator/evaluations/${id}`);
+  /**
+   * Approve evaluation
+   * POST /api/evaluator/evaluations/{id}/approve
+   */
+  approveEvaluation: async (id, comments) => {
+    console.log('✅ Approving evaluation:', id);
+    const response = await API.post(`/evaluator/evaluations/${id}/approve`, {
+      comments: comments || ''
+    });
+    return response.data;
   },
 
-  // Approve evaluation
-  approveEvaluation: (id, comments) => {
-    console.log('📡 Approving evaluation:', id);
-    return API.post(`/evaluator/evaluations/${id}/approve`, { comments });
-  },
-
-  // Reject evaluation
-  rejectEvaluation: (id, comments) => {
-    console.log('📡 Rejecting evaluation:', id);
-    return API.post(`/evaluator/evaluations/${id}/reject`, { comments });
-  },
+  /**
+   * Reject evaluation
+   * POST /api/evaluator/evaluations/{id}/reject
+   */
+  rejectEvaluation: async (id, reason) => {
+    console.log('❌ Rejecting evaluation:', id);
+    const response = await API.post(`/evaluator/evaluations/${id}/reject`, {
+      reason: reason || 'Not specified'
+    });
+    return response.data;
+  }
 };
-
-export const {
-  getQueue,
-  getEvaluationForReview,
-  approveEvaluation,
-  rejectEvaluation,
-} = evaluatorService;
 
 export default evaluatorService;

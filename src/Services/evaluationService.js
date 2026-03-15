@@ -1,71 +1,81 @@
 import API from './api';
 
 const evaluationService = {
-  // Get my evaluations (for logged-in organization)
-  getMyEvaluations: () => {
+  getMyEvaluations: async () => {
     console.log('📡 Fetching my evaluations');
-    return API.get('/evaluations/my');
+    const response = await API.get('/evaluations/my');
+    return response.data;
   },
 
-  // Get evaluation by ID
-  getEvaluationById: (id) => {
+  getEvaluationById: async (id) => {
     console.log('📡 Fetching evaluation:', id);
-    return API.get(`/evaluations/${id}`);
+    const response = await API.get(`/evaluations/${id}`);
+    return response.data;
+  },
+   getResponses: async (evaluationId) => {
+    console.log('📡 Fetching responses for evaluation:', evaluationId);
+    const response = await API.get(`/evaluations/${evaluationId}/responses`);
+    return response.data;
   },
 
-  // Create new evaluation
-  createEvaluation: (data) => {
-    console.log('📡 Creating evaluation:', data);
-    return API.post('/evaluations', data);
+  createEvaluation: async (evaluationData) => {
+    console.log('📡 Creating evaluation:', evaluationData);
+    const response = await API.post('/evaluations', evaluationData);
+    console.log('📥 Backend response:', response.data);
+    return response.data; // ✅ Returns { evaluationId, name, period, ... }
   },
 
-  // Update evaluation
-  updateEvaluation: (id, data) => {
+  updateEvaluation: async (id, evaluationData) => {
     console.log('📡 Updating evaluation:', id);
-    return API.put(`/evaluations/${id}`, data);
+    const response = await API.put(`/evaluations/${id}`, evaluationData);
+    return response.data;
   },
 
-  // Save responses (answers to criteria)
-  saveResponses: (evaluationId, responses) => {
+  saveResponses: async (evaluationId, responses) => {
     console.log('📡 Saving responses for evaluation:', evaluationId);
-    return API.post(`/evaluations/${evaluationId}/responses`, { responses });
+    console.log('📦 Original responses:', responses);
+    
+    // ✅ Ensure responses is always an array
+    let responsesArray;
+    
+    if (Array.isArray(responses)) {
+      responsesArray = responses;
+    } else if (responses && typeof responses === 'object') {
+      responsesArray = Object.values(responses);
+    } else {
+      responsesArray = [];
+    }
+    
+    console.log('📤 Sending responses array:', responsesArray);
+    console.log('📊 Total responses:', responsesArray.length);
+    
+    const response = await API.post(`/evaluations/${evaluationId}/responses`, responsesArray);
+    return response.data;
   },
 
-  // Submit evaluation
-  submitEvaluation: (id) => {
+  submitEvaluation: async (id) => {
     console.log('📡 Submitting evaluation:', id);
-    return API.post(`/evaluations/${id}/submit`);
+    const response = await API.post(`/evaluations/${id}/submit`);
+    return response.data;
   },
 
-  // Delete evaluation
-  deleteEvaluation: (id) => {
+  deleteEvaluation: async (id) => {
     console.log('📡 Deleting evaluation:', id);
-    return API.delete(`/evaluations/${id}`);
+    const response = await API.delete(`/evaluations/${id}`);
+    return response.data;
   },
 
-  // Get evaluation result and certification
-  getEvaluationResult: (id) => {
+  getEvaluationResult: async (id) => {
     console.log('📡 Fetching evaluation result:', id);
-    return API.get(`/evaluations/${id}/result`);
+    const response = await API.get(`/evaluations/${id}/result`);
+    return response.data;
   },
 
-  // Get recommendations for an evaluation
-  getRecommendations: (id) => {
-    console.log('📡 Fetching recommendations for evaluation:', id);
-    return API.get(`/evaluations/${id}/recommendations`);
-  },
+  getRecommendations: async (id) => {
+    console.log('📡 Fetching recommendations:', id);
+    const response = await API.get(`/evaluations/${id}/recommendations`);
+    return response.data;
+  }
 };
-
-export const {
-  getMyEvaluations,
-  getEvaluationById,
-  createEvaluation,
-  updateEvaluation,
-  saveResponses,
-  submitEvaluation,
-  deleteEvaluation,
-  getEvaluationResult,
-  getRecommendations,
-} = evaluationService;
 
 export default evaluationService;

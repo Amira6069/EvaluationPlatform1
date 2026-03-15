@@ -1,138 +1,62 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { getQueue } from '../../Services/evaluatorService';
+import evaluatorService from '../../Services/evaluatorService';
 
 const QueuePage = () => {
   const navigate = useNavigate();
   const { t } = useTranslation();
+  
   const [evaluations, setEvaluations] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState('all'); // all, reviewed, pending
+  const [filter, setFilter] = useState('all');
 
   useEffect(() => {
-    fetchQueue();
+    loadQueue();
   }, []);
 
-  const fetchQueue = async () => {
-    try {
-      setLoading(true);
-      console.log('📡 Fetching queue...');
-      
-      const response = await getQueue();
-      setEvaluations(response.data || []);
-      
-      console.log('✅ Queue loaded:', response.data?.length || 0);
-    } catch (error) {
-      console.error('❌ Error fetching queue:', error);
-    } finally {
-      setLoading(false);
+ const loadQueue = async () => {
+  try {
+    const data = await evaluatorService.getQueue();
+    console.log('✅ Queue data received:', data);
+    
+    if (!Array.isArray(data)) {
+      console.error('❌ Queue data is not an array:', data);
+      setEvaluations([]);
+      return;
     }
-  };
-
-  const getScoreColor = (score) => {
-    if (score >= 80) return '#10b981';
-    if (score >= 60) return '#f59e0b';
-    if (score >= 40) return '#f97316';
-    return '#ef4444';
-  };
-
-  const filteredEvaluations = evaluations.filter((evaluation) => {
-    if (filter === 'all') return true;
-    if (filter === 'reviewed') return evaluation.reviewed;
-    if (filter === 'pending') return !evaluation.reviewed;
-    return true;
-  });
+    
+    setEvaluations(data);
+  } catch (error) {
+    console.error('❌ Error loading queue:', error);
+    console.error('❌ Error response:', error.response?.data);
+    alert('Failed to load evaluations: ' + (error.response?.data?.error || error.message));
+  } finally {
+    setLoading(false);
+  }
+};
 
   const styles = {
-    container: { padding: '24px' },
+    container: { padding: '24px', maxWidth: '1400px', margin: '0 auto' },
     header: { marginBottom: '32px' },
     title: { fontSize: '28px', fontWeight: 'bold', color: '#111827', marginBottom: '8px' },
     subtitle: { fontSize: '16px', color: '#6b7280' },
-    filterBar: {
-      display: 'flex',
-      gap: '8px',
-      marginBottom: '20px',
-    },
-    filterButton: {
+    table: { width: '100%', background: 'white', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' },
+    th: { padding: '16px', textAlign: 'left', background: '#f9fafb', fontSize: '14px', fontWeight: '600', color: '#374151', borderBottom: '1px solid #e5e7eb' },
+    td: { padding: '16px', borderBottom: '1px solid #e5e7eb', fontSize: '14px', color: '#6b7280' },
+    button: {
       padding: '8px 16px',
-      border: 'none',
-      borderRadius: '8px',
-      cursor: 'pointer',
-      fontSize: '14px',
-      fontWeight: '500',
-      transition: 'all 0.2s',
-    },
-    filterActive: {
       background: '#2563eb',
       color: 'white',
-    },
-    filterInactive: {
-      background: '#f3f4f6',
-      color: '#6b7280',
-    },
-    grid: {
-      display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))',
-      gap: '20px',
-    },
-    card: {
-      background: 'white',
-      borderRadius: '12px',
-      padding: '24px',
-      boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-      transition: 'transform 0.2s, box-shadow 0.2s',
+      border: 'none',
+      borderRadius: '6px',
+      fontSize: '13px',
+      fontWeight: '600',
       cursor: 'pointer',
     },
-    cardHeader: {
-      display: 'flex',
-      justifyContent: 'space-between',
-      alignItems: 'flex-start',
-      marginBottom: '16px',
-    },
-    cardTitle: {
-      fontSize: '18px',
-      fontWeight: '600',
-      color: '#111827',
-      marginBottom: '4px',
-    },
-    cardOrg: {
-      fontSize: '14px',
-      color: '#6b7280',
-    },
-    scoreCircle: {
-      width: '60px',
-      height: '60px',
-      borderRadius: '50%',
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      color: 'white',
-      fontWeight: 'bold',
-      fontSize: '18px',
-    },
-    scoreLabel: {
-      fontSize: '9px',
-      fontWeight: '500',
-    },
-    badge: {
-      display: 'inline-block',
-      padding: '4px 10px',
-      borderRadius: '10px',
-      fontSize: '12px',
-      fontWeight: '600',
-      marginTop: '12px',
-    },
-    loading: {
+    emptyState: {
       textAlign: 'center',
       padding: '60px',
-      color: '#6b7280',
-    },
-    empty: {
-      textAlign: 'center',
-      padding: '60px',
-      color: '#6b7280',
       background: 'white',
       borderRadius: '12px',
       boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
@@ -142,7 +66,7 @@ const QueuePage = () => {
   if (loading) {
     return (
       <div style={styles.container}>
-        <div style={styles.loading}>
+        <div style={{ textAlign: 'center', padding: '60px' }}>
           <div style={{ fontSize: '48px', marginBottom: '16px' }}>⏳</div>
           <p>{t('common.loading')}</p>
         </div>
@@ -153,98 +77,68 @@ const QueuePage = () => {
   return (
     <div style={styles.container}>
       <div style={styles.header}>
-        <h1 style={styles.title}>📋 {t('queue.evaluationQueue')}</h1>
-        <p style={styles.subtitle}>{t('queue.evaluationsWillAppear')}</p>
+        <h1 style={styles.title}>{t('evaluator.evaluationQueue')}</h1>
+        <p style={styles.subtitle}>Review and approve pending evaluations</p>
       </div>
 
-      <div style={styles.filterBar}>
-        {['all', 'pending', 'reviewed'].map((filterType) => (
-          <button
-            key={filterType}
-            style={{
-              ...styles.filterButton,
-              ...(filter === filterType ? styles.filterActive : styles.filterInactive),
-            }}
-            onClick={() => setFilter(filterType)}
-            onMouseEnter={(e) => {
-              if (filter !== filterType) e.target.style.background = '#e5e7eb';
-            }}
-            onMouseLeave={(e) => {
-              if (filter !== filterType) e.target.style.background = '#f3f4f6';
-            }}
-          >
-            {filterType === 'all' && t('evaluation.all')}
-            {filterType === 'pending' && 'Pending Review'}
-            {filterType === 'reviewed' && 'Reviewed'}
-          </button>
-        ))}
-      </div>
-
-      {filteredEvaluations.length > 0 ? (
-        <div style={styles.grid}>
-          {filteredEvaluations.map((evaluation) => {
-            const scoreColor = getScoreColor(evaluation.totalScore || 0);
-            return (
-              <div
-                key={evaluation.evaluationId}
-                style={styles.card}
-                onClick={() => navigate(`/evaluator/review/${evaluation.evaluationId}`)}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.transform = 'translateY(-4px)';
-                  e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.transform = 'translateY(0)';
-                  e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.1)';
-                }}
-              >
-                <div style={styles.cardHeader}>
-                  <div>
-                    <h3 style={styles.cardTitle}>{evaluation.name}</h3>
-                    <p style={styles.cardOrg}>{evaluation.organizationName}</p>
-                  </div>
-                  <div style={{ ...styles.scoreCircle, background: scoreColor }}>
-                    <span>{Math.round(evaluation.totalScore || 0)}%</span>
-                    <span style={styles.scoreLabel}>{t('evaluation.score')}</span>
-                  </div>
-                </div>
-
-                <div style={{ fontSize: '14px', color: '#6b7280', marginBottom: '8px' }}>
-                  📅 {evaluation.period}
-                </div>
-
-                {evaluation.reviewed ? (
-                  <div
-                    style={{
-                      ...styles.badge,
-                      background: evaluation.reviewStatus === 'APPROVED' ? '#d1fae5' : '#fee2e2',
-                      color: evaluation.reviewStatus === 'APPROVED' ? '#065f46' : '#991b1b',
-                    }}
-                  >
-                    ✓ {evaluation.reviewStatus === 'APPROVED' ? t('evaluation.approved') : t('evaluation.rejected')}
-                  </div>
-                ) : (
-                  <div
-                    style={{
-                      ...styles.badge,
-                      background: '#fef3c7',
-                      color: '#92400e',
-                    }}
-                  >
-                    ⏳ Pending Review
-                  </div>
-                )}
-              </div>
-            );
-          })}
+      {evaluations.length === 0 ? (
+        <div style={styles.emptyState}>
+          <div style={{ fontSize: '64px', marginBottom: '16px' }}>✅</div>
+          <h3 style={{ fontSize: '18px', color: '#111827', marginBottom: '8px' }}>
+            {t('evaluator.noEvaluationsInQueue')}
+          </h3>
+          <p style={{ color: '#6b7280' }}>All evaluations have been reviewed</p>
         </div>
       ) : (
-        <div style={styles.empty}>
-          <p style={{ fontSize: '40px', marginBottom: '12px' }}>📋</p>
-          <p style={{ fontWeight: '600', marginBottom: '8px' }}>
-            {t('queue.noEvaluations')}
-          </p>
-          <p style={{ fontSize: '14px' }}>{t('queue.evaluationsWillAppear')}</p>
+        <div style={styles.table}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr>
+                <th style={styles.th}>{t('evaluation.evaluationName')}</th>
+                <th style={styles.th}>Organization</th>
+                <th style={styles.th}>{t('common.period')}</th>
+                <th style={styles.th}>{t('common.score')}</th>
+                <th style={styles.th}>{t('evaluation.submitted')}</th>
+                <th style={styles.th}>{t('common.actions')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {evaluations.map((evaluation) => (
+                <tr key={evaluation.evaluationId}>
+                  <td style={styles.td}>
+                    <strong style={{ color: '#111827' }}>{evaluation.name}</strong>
+                  </td>
+                  <td style={styles.td}>{evaluation.organization?.name || 'N/A'}</td>
+                  <td style={styles.td}>{evaluation.period}</td>
+                  <td style={styles.td}>
+                    <span style={{
+                      padding: '4px 12px',
+                      borderRadius: '12px',
+                      background: evaluation.totalScore >= 70 ? '#d1fae5' : '#fee2e2',
+                      color: evaluation.totalScore >= 70 ? '#065f46' : '#dc2626',
+                      fontSize: '13px',
+                      fontWeight: '600'
+                    }}>
+                      {evaluation.totalScore ? Math.round(evaluation.totalScore) + '%' : 'N/A'}
+                    </span>
+                  </td>
+                  <td style={styles.td}>
+                    {new Date(evaluation.submittedAt).toLocaleDateString()}
+                  </td>
+                  <td style={styles.td}>
+                    <button
+                      style={styles.button}
+                      onClick={() => navigate(`/evaluator/review/${evaluation.evaluationId}`)}
+                      onMouseEnter={(e) => (e.target.style.background = '#1d4ed8')}
+                      onMouseLeave={(e) => (e.target.style.background = '#2563eb')}
+                    >
+                      {t('common.view')}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </div>

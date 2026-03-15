@@ -1,143 +1,101 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { getMyEvaluations, deleteEvaluation } from '../../Services/evaluationService';
+import evaluationService from '../../Services/evaluationService';
 
 const EvaluationsPage = () => {
   const navigate = useNavigate();
   const { t } = useTranslation();
+  
   const [evaluations, setEvaluations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
 
   useEffect(() => {
-    fetchEvaluations();
+    loadEvaluations();
   }, []);
 
-  const fetchEvaluations = async () => {
+  const loadEvaluations = async () => {
     try {
-      setLoading(true);
-      console.log('📡 Fetching my evaluations');
-      
-      const response = await getMyEvaluations();
-      setEvaluations(response.data || []);
-      
-      console.log('✅ Evaluations loaded:', response.data?.length || 0);
+      const data = await evaluationService.getMyEvaluations();
+      setEvaluations(data);
     } catch (error) {
-      console.error('❌ Error fetching evaluations:', error);
+      console.error('❌ Error loading evaluations:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDelete = async (id, evaluationName) => {
-    if (!window.confirm(t('evaluation.confirmDelete') || `Delete "${evaluationName}"?`)) {
-      return;
-    }
+  const handleDelete = async (id) => {
+    if (!window.confirm(t('evaluation.confirmDelete'))) return;
 
     try {
-      console.log('🗑️ Deleting evaluation:', id);
-      await deleteEvaluation(id);
-      console.log('✅ Evaluation deleted');
-      
-      // Refresh list
-      await fetchEvaluations();
+      await evaluationService.deleteEvaluation(id);
+      setEvaluations(evaluations.filter(e => e.evaluationId !== id));
+      alert(t('evaluation.evaluationDeleted'));
     } catch (error) {
       console.error('❌ Error deleting evaluation:', error);
-      alert(t('evaluation.deleteFailed') || 'Failed to delete evaluation');
+      alert('Failed to delete evaluation');
     }
+  };
+
+  const getFilteredEvaluations = () => {
+    if (filter === 'all') return evaluations;
+    return evaluations.filter(e => e.status === filter);
   };
 
   const getStatusColor = (status) => {
-    const colors = {
-      CREATED: { bg: '#f3f4f6', color: '#374151' },
-      IN_PROGRESS: { bg: '#dbeafe', color: '#1e40af' },
-      SUBMITTED: { bg: '#e0e7ff', color: '#4338ca' },
-      UNDER_REVIEW: { bg: '#fef3c7', color: '#92400e' },
-      APPROVED: { bg: '#d1fae5', color: '#065f46' },
-      REJECTED: { bg: '#fee2e2', color: '#991b1b' },
-    };
-    return colors[status] || { bg: '#f3f4f6', color: '#374151' };
+    switch (status) {
+      case 'CREATED':
+      case 'IN_PROGRESS':
+        return '#f59e0b';
+      case 'SUBMITTED':
+      case 'UNDER_REVIEW':
+        return '#3b82f6';
+      case 'APPROVED':
+        return '#10b981';
+      case 'REJECTED':
+        return '#ef4444';
+      default:
+        return '#6b7280';
+    }
   };
 
-  const filteredEvaluations = evaluations.filter(evaluation => {
-    if (filter === 'all') return true;
-    return evaluation.status === filter;
-  });
-
   const styles = {
-    container: { padding: '24px' },
-    header: {
-      marginBottom: '24px',
-      display: 'flex',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-    },
+    container: { padding: '24px', maxWidth: '1400px', margin: '0 auto' },
+    header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' },
     title: { fontSize: '28px', fontWeight: 'bold', color: '#111827' },
-    addButton: {
-      padding: '10px 20px',
+    button: {
+      padding: '12px 24px',
       background: '#2563eb',
       color: 'white',
       border: 'none',
       borderRadius: '8px',
-      cursor: 'pointer',
-      fontSize: '14px',
+      fontSize: '15px',
       fontWeight: '600',
-      transition: 'background 0.2s',
+      cursor: 'pointer',
     },
-    filterBar: {
-      display: 'flex',
-      gap: '8px',
-      marginBottom: '20px',
-      flexWrap: 'wrap',
-    },
+    filters: { display: 'flex', gap: '12px', marginBottom: '24px' },
     filterButton: {
       padding: '8px 16px',
-      border: 'none',
+      border: '1px solid #d1d5db',
       borderRadius: '8px',
+      background: 'white',
       cursor: 'pointer',
       fontSize: '14px',
-      fontWeight: '500',
-      transition: 'all 0.2s',
     },
-    filterActive: {
+    filterButtonActive: {
       background: '#2563eb',
       color: 'white',
+      border: '1px solid #2563eb',
     },
-    filterInactive: {
-      background: '#f3f4f6',
-      color: '#6b7280',
-    },
-    table: {
-      background: 'white',
-      borderRadius: '12px',
-      overflow: 'hidden',
-      boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-    },
-    tableHeader: {
-      background: '#f9fafb',
-      borderBottom: '1px solid #e5e7eb',
-      padding: '14px 24px',
-      display: 'grid',
-      gridTemplateColumns: '2fr 1.5fr 1fr 1fr 150px',
-      gap: '16px',
-      fontSize: '13px',
-      fontWeight: '600',
-      color: '#6b7280',
-    },
-    tableRow: {
-      borderBottom: '1px solid #f3f4f6',
-      padding: '16px 24px',
-      display: 'grid',
-      gridTemplateColumns: '2fr 1.5fr 1fr 1fr 150px',
-      gap: '16px',
-      alignItems: 'center',
-      transition: 'background 0.2s',
-    },
-    badge: {
+    table: { width: '100%', background: 'white', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' },
+    th: { padding: '16px', textAlign: 'left', background: '#f9fafb', fontSize: '14px', fontWeight: '600', color: '#374151', borderBottom: '1px solid #e5e7eb' },
+    td: { padding: '16px', borderBottom: '1px solid #e5e7eb', fontSize: '14px', color: '#6b7280' },
+    statusBadge: {
       display: 'inline-block',
-      padding: '4px 10px',
-      borderRadius: '10px',
+      padding: '4px 12px',
+      borderRadius: '12px',
       fontSize: '12px',
       fontWeight: '600',
     },
@@ -145,27 +103,17 @@ const EvaluationsPage = () => {
       padding: '6px 12px',
       border: 'none',
       borderRadius: '6px',
+      fontSize: '13px',
+      fontWeight: '600',
       cursor: 'pointer',
-      fontSize: '12px',
-      marginRight: '4px',
-      transition: 'background 0.2s',
-    },
-    loading: {
-      textAlign: 'center',
-      padding: '60px',
-      color: '#6b7280',
-    },
-    empty: {
-      textAlign: 'center',
-      padding: '60px',
-      color: '#6b7280',
+      marginRight: '8px',
     },
   };
 
   if (loading) {
     return (
       <div style={styles.container}>
-        <div style={styles.loading}>
+        <div style={{ textAlign: 'center', padding: '60px' }}>
           <div style={{ fontSize: '48px', marginBottom: '16px' }}>⏳</div>
           <p>{t('common.loading')}</p>
         </div>
@@ -173,14 +121,14 @@ const EvaluationsPage = () => {
     );
   }
 
-  const statuses = ['all', 'CREATED', 'IN_PROGRESS', 'SUBMITTED', 'UNDER_REVIEW', 'APPROVED', 'REJECTED'];
+  const filteredEvaluations = getFilteredEvaluations();
 
   return (
     <div style={styles.container}>
       <div style={styles.header}>
-        <h1 style={styles.title}>📋 {t('nav.evaluations')}</h1>
+        <h1 style={styles.title}>{t('evaluation.myEvaluations')}</h1>
         <button
-          style={styles.addButton}
+          style={styles.button}
           onClick={() => navigate('/organization/evaluations/new')}
           onMouseEnter={(e) => (e.target.style.background = '#1d4ed8')}
           onMouseLeave={(e) => (e.target.style.background = '#2563eb')}
@@ -189,101 +137,123 @@ const EvaluationsPage = () => {
         </button>
       </div>
 
-      <div style={styles.filterBar}>
-        {statuses.map((status) => (
+      <div style={styles.filters}>
+        {['all', 'CREATED', 'IN_PROGRESS', 'SUBMITTED', 'APPROVED', 'REJECTED'].map((status) => (
           <button
             key={status}
             style={{
               ...styles.filterButton,
-              ...(filter === status ? styles.filterActive : styles.filterInactive),
+              ...(filter === status ? styles.filterButtonActive : {}),
             }}
             onClick={() => setFilter(status)}
-            onMouseEnter={(e) => {
-              if (filter !== status) e.target.style.background = '#e5e7eb';
-            }}
-            onMouseLeave={(e) => {
-              if (filter !== status) e.target.style.background = '#f3f4f6';
-            }}
           >
-            {status === 'all' ? t('evaluation.all') : t(`evaluation.${status.toLowerCase()}`)}
+            {status === 'all' ? 'All' : t(`evaluation.${status.toLowerCase()}`)}
           </button>
         ))}
       </div>
 
-      <div style={styles.table}>
-        <div style={styles.tableHeader}>
-          <span>{t('evaluation.evaluationName')}</span>
-          <span>{t('evaluation.period')}</span>
-          <span>{t('evaluation.score')}</span>
-          <span>{t('evaluation.status')}</span>
-          <span>{t('common.actions')}</span>
+      {filteredEvaluations.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '60px', background: 'white', borderRadius: '12px' }}>
+          <div style={{ fontSize: '64px', marginBottom: '16px' }}>📋</div>
+          <h3 style={{ fontSize: '18px', color: '#111827', marginBottom: '8px' }}>
+            {t('evaluation.noEvaluations')}
+          </h3>
+          <p style={{ color: '#6b7280', marginBottom: '24px' }}>
+            {t('evaluation.createFirst')}
+          </p>
+          <button
+            style={styles.button}
+            onClick={() => navigate('/organization/evaluations/new')}
+          >
+            {t('evaluation.createEvaluation')}
+          </button>
         </div>
-
-        {filteredEvaluations.length > 0 ? (
-          filteredEvaluations.map((evaluation) => {
-            const statusColor = getStatusColor(evaluation.status);
-            const canDelete = evaluation.status === 'CREATED' || evaluation.status === 'IN_PROGRESS';
-            const canEdit = evaluation.status === 'CREATED' || evaluation.status === 'IN_PROGRESS';
-
-            return (
-              <div
-                key={evaluation.evaluationId}
-                style={styles.tableRow}
-                onMouseEnter={(e) => (e.currentTarget.style.background = '#f9fafb')}
-                onMouseLeave={(e) => (e.currentTarget.style.background = 'white')}
-              >
-                <span style={{ fontWeight: '600' }}>{evaluation.name}</span>
-                <span style={{ color: '#6b7280', fontSize: '14px' }}>
-                  {evaluation.period}
-                </span>
-                <span style={{ fontWeight: '600', color: '#2563eb' }}>
-                  {evaluation.totalScore ? `${Math.round(evaluation.totalScore)}%` : '-'}
-                </span>
-                <span
-                  style={{
-                    ...styles.badge,
-                    background: statusColor.bg,
-                    color: statusColor.color,
-                  }}
-                >
-                  {t(`evaluation.${evaluation.status.toLowerCase()}`)}
-                </span>
-                <div>
-                  <button
-                    style={{ ...styles.actionButton, background: '#eff6ff', color: '#2563eb' }}
-                    onClick={() => navigate(`/organization/evaluations/${evaluation.evaluationId}`)}
-                  >
-                    {canEdit ? t('common.edit') : t('common.view')}
-                  </button>
-                  {canDelete && (
-                    <button
-                      style={{ ...styles.actionButton, background: '#fef2f2', color: '#dc2626' }}
-                      onClick={() => handleDelete(evaluation.evaluationId, evaluation.name)}
+      ) : (
+        <div style={styles.table}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr>
+                <th style={styles.th}>{t('evaluation.evaluationName')}</th>
+                <th style={styles.th}>{t('common.period')}</th>
+                <th style={styles.th}>{t('common.status')}</th>
+                <th style={styles.th}>{t('common.score')}</th>
+                <th style={styles.th}>{t('evaluation.created')}</th>
+                <th style={styles.th}>{t('common.actions')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredEvaluations.map((evaluation) => (
+                <tr key={evaluation.evaluationId}>
+                  <td style={styles.td}>
+                    <strong style={{ color: '#111827' }}>{evaluation.name}</strong>
+                  </td>
+                  <td style={styles.td}>{evaluation.period}</td>
+                  <td style={styles.td}>
+                    <span
+                      style={{
+                        ...styles.statusBadge,
+                        background: getStatusColor(evaluation.status) + '20',
+                        color: getStatusColor(evaluation.status),
+                      }}
                     >
-                      {t('common.delete')}
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })
-        ) : (
-          <div style={styles.empty}>
-            <p style={{ fontSize: '40px', marginBottom: '12px' }}>📋</p>
-            <p style={{ fontWeight: '600', marginBottom: '8px' }}>
-              {t('evaluation.noEvaluationsFound')}
-            </p>
-            <button
-              style={styles.addButton}
-              onClick={() => navigate('/organization/evaluations/new')}
-              onMouseEnter={(e) => (e.target.style.background = '#1d4ed8')}
-              onMouseLeave={(e) => (e.target.style.background = '#2563eb')}
-            >
-              + {t('evaluation.newEvaluation')}
-            </button>
-          </div>
-        )}
-      </div>
+                      {t(`evaluation.${evaluation.status.toLowerCase()}`)}
+                    </span>
+                  </td>
+                  <td style={styles.td}>
+                    {evaluation.totalScore ? Math.round(evaluation.totalScore) + '%' : '-'}
+                  </td>
+                  <td style={styles.td}>
+                    {new Date(evaluation.createdAt).toLocaleDateString()}
+                  </td>
+                  <td style={styles.td}>
+                    {(evaluation.status === 'CREATED' || evaluation.status === 'IN_PROGRESS') && (
+                      <>
+                        <button
+                          style={{
+                            ...styles.actionButton,
+                            background: '#2563eb',
+                            color: 'white',
+                          }}
+                          onClick={() => navigate(`/organization/evaluations/${evaluation.evaluationId}`)}
+                        >
+                          {t('common.edit')}
+                        </button>
+                        <button
+                          style={{
+                            ...styles.actionButton,
+                            background: '#ef4444',
+                            color: 'white',
+                          }}
+                          onClick={() => handleDelete(evaluation.evaluationId)}
+                        >
+                          {t('common.delete')}
+                        </button>
+                      </>
+                    )}
+                    {evaluation.status === 'APPROVED' && (
+                      <button
+                        style={{
+                          ...styles.actionButton,
+                          background: '#10b981',
+                          color: 'white',
+                        }}
+                        onClick={() => navigate('/organization/results')}
+                      >
+                        {t('results.viewCertificate')}
+                      </button>
+                    )}
+                    {(evaluation.status === 'SUBMITTED' || evaluation.status === 'UNDER_REVIEW') && (
+                      <span style={{ fontSize: '13px', color: '#6b7280' }}>
+                        {t('results.pendingApproval')}
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 };

@@ -1,173 +1,147 @@
 import React, { useState, useEffect } from 'react';
-import { getMyOrganization, updateOrganization } from '../../Services/organizationService';
-import { STORAGE_KEYS } from '../../utils/constants';
+import { useTranslation } from 'react-i18next';
+import { useAuth } from '../../contexts/AuthContext';
+import userService from '../../Services/userService';
 
 const SettingsPage = () => {
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
-  const [errors, setErrors] = useState({});
-  const [formData, setFormData] = useState({
+  const { t } = useTranslation();
+  const { user, login } = useAuth();
+  
+  const [loading, setLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState('profile');
+  const [message, setMessage] = useState({ type: '', text: '' });
+
+  // Profile form
+  const [profileData, setProfileData] = useState({
     name: '',
     email: '',
-    dateOfFoundation: '',
-    sector: '',
-    address: '',
-    phone: ''
+  });
+
+  // Password form
+  const [passwordData, setPasswordData] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: '',
   });
 
   useEffect(() => {
-    fetchOrganizationData();
+    loadUserData();
   }, []);
 
-  const fetchOrganizationData = async () => {
+  const loadUserData = async () => {
+    try {
+      const userData = await userService.getCurrentUser();
+      setProfileData({
+        name: userData.name || '',
+        email: userData.email || '',
+      });
+    } catch (error) {
+      console.error('Error loading user data:', error);
+    }
+  };
+
+  const handleProfileSubmit = async (e) => {
+    e.preventDefault();
+    setMessage({ type: '', text: '' });
+
     try {
       setLoading(true);
-      const response = await getMyOrganization();
-      const org = response.data;
+      const response = await userService.updateProfile(profileData);
       
-      setFormData({
-        name: org.name || '',
-        email: org.email || '',
-        dateOfFoundation: org.dateOfFoundation || '',
-        sector: org.sector || '',
-        address: org.address || '',
-        phone: org.phone || ''
+      // Update auth context with new user data
+      login(localStorage.getItem('governance_token'), response.user);
+      
+      setMessage({ type: 'success', text: t('settings.changesSaved') });
+    } catch (error) {
+      setMessage({ 
+        type: 'error', 
+        text: error.response?.data?.error || 'Failed to update profile' 
       });
-    } catch (err) {
-      console.error('Error fetching organization:', err);
-      setError('Failed to load organization data');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
-    setErrors({ ...errors, [e.target.name]: '' });
-    setError('');
-    setSuccess('');
-  };
-
-  const validateForm = () => {
-    const newErrors = {};
-    
-    // Required fields
-    if (!formData.name || formData.name.trim() === '') {
-      newErrors.name = 'Organization name is required';
-    }
-    
-    if (!formData.sector || formData.sector.trim() === '') {
-      newErrors.sector = 'Sector is required';
-    }
-    
-    if (!formData.address || formData.address.trim() === '') {
-      newErrors.address = 'Address is required';
-    }
-    
-    if (!formData.phone || formData.phone.trim() === '') {
-      newErrors.phone = 'Phone number is required';
-    } else if (!/^\+?[\d\s-()]+$/.test(formData.phone)) {
-      newErrors.phone = 'Please enter a valid phone number';
-    }
-    
-    if (!formData.dateOfFoundation) {
-      newErrors.dateOfFoundation = 'Date of foundation is required';
-    }
-    
-    return newErrors;
-  };
-
-  const handleSubmit = async (e) => {
+  const handlePasswordSubmit = async (e) => {
     e.preventDefault();
-    
-    // Validate form
-    const validationErrors = validateForm();
-    if (Object.keys(validationErrors).length > 0) {
-      setErrors(validationErrors);
-      setError('Please fill in all required fields');
+    setMessage({ type: '', text: '' });
+
+    if (passwordData.newPassword !== passwordData.confirmPassword) {
+      setMessage({ type: 'error', text: 'Passwords do not match' });
       return;
     }
-    
-    setSaving(true);
-    setError('');
-    setSuccess('');
+
+    if (passwordData.newPassword.length < 6) {
+      setMessage({ type: 'error', text: 'Password must be at least 6 characters' });
+      return;
+    }
 
     try {
-      const userStr = localStorage.getItem(STORAGE_KEYS.USER);
-      const user = JSON.parse(userStr);
+      setLoading(true);
+      await userService.changePassword({
+        currentPassword: passwordData.currentPassword,
+        newPassword: passwordData.newPassword,
+      });
       
-      await updateOrganization(user.userId, formData);
-      
-      setSuccess('Profile updated successfully!');
-      
-      // Update user name in localStorage
-      const updatedUser = { ...user, name: formData.name };
-      localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(updatedUser));
-      
-      // Clear success message after 3 seconds
-      setTimeout(() => setSuccess(''), 3000);
-    } catch (err) {
-      console.error('Error updating organization:', err);
-      setError('Failed to update profile. Please try again.');
+      setMessage({ type: 'success', text: t('settings.passwordChanged') });
+      setPasswordData({
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: '',
+      });
+    } catch (error) {
+      setMessage({ 
+        type: 'error', 
+        text: error.response?.data?.error || 'Failed to change password' 
+      });
     } finally {
-      setSaving(false);
+      setLoading(false);
     }
   };
 
   const styles = {
-    container: { padding: '24px', maxWidth: '800px' },
+    container: { padding: '24px', maxWidth: '900px', margin: '0 auto' },
     header: { marginBottom: '32px' },
     title: { fontSize: '28px', fontWeight: 'bold', color: '#111827', marginBottom: '8px' },
-    subtitle: { color: '#6b7280', fontSize: '16px' },
+    subtitle: { fontSize: '16px', color: '#6b7280' },
+    tabs: { display: 'flex', gap: '8px', marginBottom: '24px', borderBottom: '2px solid #e5e7eb' },
+    tab: {
+      padding: '12px 24px',
+      border: 'none',
+      background: 'transparent',
+      fontSize: '15px',
+      fontWeight: '600',
+      cursor: 'pointer',
+      borderBottom: '2px solid transparent',
+      marginBottom: '-2px',
+      color: '#6b7280',
+    },
+    tabActive: {
+      color: '#2563eb',
+      borderBottom: '2px solid #2563eb',
+    },
     card: {
       background: 'white',
       borderRadius: '12px',
+      padding: '32px',
       boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-      padding: '32px'
     },
-    alert: {
-      padding: '12px 16px',
-      borderRadius: '8px',
-      marginBottom: '20px',
-      fontSize: '14px'
-    },
-    alertError: { background: '#fee2e2', color: '#dc2626', border: '1px solid #fecaca' },
-    alertSuccess: { background: '#d1fae5', color: '#065f46', border: '1px solid #6ee7b7' },
-    form: { display: 'flex', flexDirection: 'column', gap: '24px' },
-    row: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' },
-    inputGroup: { display: 'flex', flexDirection: 'column' },
-    label: { 
-      marginBottom: '8px', 
-      fontSize: '14px', 
-      fontWeight: '500', 
+    formGroup: { marginBottom: '24px' },
+    label: {
+      display: 'block',
+      fontSize: '14px',
+      fontWeight: '600',
       color: '#374151',
-      display: 'flex',
-      alignItems: 'center',
-      gap: '4px'
+      marginBottom: '8px',
     },
-    required: { color: '#ef4444' },
     input: {
-      padding: '10px 14px',
+      width: '100%',
+      padding: '12px 16px',
       border: '1px solid #d1d5db',
       borderRadius: '8px',
       fontSize: '15px',
       outline: 'none',
-      transition: 'border-color 0.2s',
       boxSizing: 'border-box',
-    },
-    inputError: {
-      borderColor: '#ef4444',
-    },
-    inputReadOnly: {
-      background: '#f9fafb',
-      cursor: 'not-allowed',
-    },
-    error: {
-      color: '#ef4444',
-      fontSize: '13px',
-      marginTop: '6px',
     },
     button: {
       padding: '12px 24px',
@@ -175,169 +149,167 @@ const SettingsPage = () => {
       color: 'white',
       border: 'none',
       borderRadius: '8px',
-      fontSize: '16px',
+      fontSize: '15px',
       fontWeight: '600',
       cursor: 'pointer',
-      transition: 'background 0.2s',
-      marginTop: '10px',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: '8px',
     },
-    buttonDisabled: { opacity: 0.6, cursor: 'not-allowed' },
-    loading: { textAlign: 'center', padding: '40px', color: '#6b7280' }
+    message: {
+      padding: '12px 16px',
+      borderRadius: '8px',
+      marginBottom: '16px',
+      fontSize: '14px',
+    },
+    messageSuccess: {
+      background: '#d1fae5',
+      border: '1px solid #6ee7b7',
+      color: '#065f46',
+    },
+    messageError: {
+      background: '#fee2e2',
+      border: '1px solid #fecaca',
+      color: '#dc2626',
+    },
   };
-
-  if (loading) {
-    return <div style={styles.loading}>⏳ Loading organization data...</div>;
-  }
 
   return (
     <div style={styles.container}>
       <div style={styles.header}>
-        <h1 style={styles.title}>⚙️ Organization Settings</h1>
-        <p style={styles.subtitle}>Manage your organization profile and information</p>
+        <h1 style={styles.title}>{t('settings.settings')}</h1>
+        <p style={styles.subtitle}>{t('settings.accountSettings')}</p>
+      </div>
+
+      <div style={styles.tabs}>
+        <button
+          style={{
+            ...styles.tab,
+            ...(activeTab === 'profile' ? styles.tabActive : {}),
+          }}
+          onClick={() => {
+            setActiveTab('profile');
+            setMessage({ type: '', text: '' });
+          }}
+        >
+          {t('settings.profileInformation')}
+        </button>
+        <button
+          style={{
+            ...styles.tab,
+            ...(activeTab === 'password' ? styles.tabActive : {}),
+          }}
+          onClick={() => {
+            setActiveTab('password');
+            setMessage({ type: '', text: '' });
+          }}
+        >
+          {t('settings.changePassword')}
+        </button>
       </div>
 
       <div style={styles.card}>
-        {error && <div style={{ ...styles.alert, ...styles.alertError }}>⚠️ {error}</div>}
-        {success && <div style={{ ...styles.alert, ...styles.alertSuccess }}>✅ {success}</div>}
+        {message.text && (
+          <div
+            style={{
+              ...styles.message,
+              ...(message.type === 'success' ? styles.messageSuccess : styles.messageError),
+            }}
+          >
+            {message.type === 'success' ? '✅ ' : '⚠️ '}
+            {message.text}
+          </div>
+        )}
 
-        <form onSubmit={handleSubmit} style={styles.form}>
-          <div style={styles.row}>
-            <div style={styles.inputGroup}>
-              <label style={styles.label}>
-                Organization Name <span style={styles.required}>*</span>
-              </label>
+        {activeTab === 'profile' && (
+          <form onSubmit={handleProfileSubmit}>
+            <div style={styles.formGroup}>
+              <label style={styles.label}>{t('auth.fullName')}</label>
               <input
                 type="text"
-                name="name"
-                value={formData.name}
-                onChange={handleChange}
-                style={{
-                  ...styles.input,
-                  ...(errors.name ? styles.inputError : {})
-                }}
-                disabled={saving}
-                placeholder="Enter organization name"
+                style={styles.input}
+                value={profileData.name}
+                onChange={(e) =>
+                  setProfileData({ ...profileData, name: e.target.value })
+                }
+                required
               />
-              {errors.name && <p style={styles.error}>{errors.name}</p>}
             </div>
 
-            <div style={styles.inputGroup}>
-              <label style={styles.label}>Email Address</label>
+            <div style={styles.formGroup}>
+              <label style={styles.label}>{t('auth.email')}</label>
               <input
                 type="email"
-                name="email"
-                value={formData.email}
-                style={{ ...styles.input, ...styles.inputReadOnly }}
-                disabled
-                readOnly
+                style={styles.input}
+                value={profileData.email}
+                onChange={(e) =>
+                  setProfileData({ ...profileData, email: e.target.value })
+                }
+                required
               />
-              <p style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px' }}>
-                Email cannot be changed
-              </p>
             </div>
-          </div>
 
-          <div style={styles.row}>
-            <div style={styles.inputGroup}>
-              <label style={styles.label}>
-                Date of Foundation <span style={styles.required}>*</span>
-              </label>
+            <button
+              type="submit"
+              style={styles.button}
+              disabled={loading}
+              onMouseEnter={(e) => (e.target.style.background = '#1d4ed8')}
+              onMouseLeave={(e) => (e.target.style.background = '#2563eb')}
+            >
+              {loading ? t('common.loading') : t('settings.saveChanges')}
+            </button>
+          </form>
+        )}
+
+        {activeTab === 'password' && (
+          <form onSubmit={handlePasswordSubmit}>
+            <div style={styles.formGroup}>
+              <label style={styles.label}>{t('settings.currentPassword')}</label>
               <input
-                type="date"
-                name="dateOfFoundation"
-                value={formData.dateOfFoundation}
-                onChange={handleChange}
-                style={{
-                  ...styles.input,
-                  ...(errors.dateOfFoundation ? styles.inputError : {})
-                }}
-                disabled={saving}
+                type="password"
+                style={styles.input}
+                value={passwordData.currentPassword}
+                onChange={(e) =>
+                  setPasswordData({ ...passwordData, currentPassword: e.target.value })
+                }
+                required
               />
-              {errors.dateOfFoundation && <p style={styles.error}>{errors.dateOfFoundation}</p>}
             </div>
 
-            <div style={styles.inputGroup}>
-              <label style={styles.label}>
-                Sector <span style={styles.required}>*</span>
-              </label>
+            <div style={styles.formGroup}>
+              <label style={styles.label}>{t('settings.newPassword')}</label>
               <input
-                type="text"
-                name="sector"
-                placeholder="e.g., Technology, Healthcare"
-                value={formData.sector}
-                onChange={handleChange}
-                style={{
-                  ...styles.input,
-                  ...(errors.sector ? styles.inputError : {})
-                }}
-                disabled={saving}
+                type="password"
+                style={styles.input}
+                value={passwordData.newPassword}
+                onChange={(e) =>
+                  setPasswordData({ ...passwordData, newPassword: e.target.value })
+                }
+                required
               />
-              {errors.sector && <p style={styles.error}>{errors.sector}</p>}
             </div>
-          </div>
 
-          <div style={styles.inputGroup}>
-            <label style={styles.label}>
-              Address <span style={styles.required}>*</span>
-            </label>
-            <input
-              type="text"
-              name="address"
-              placeholder="Organization address"
-              value={formData.address}
-              onChange={handleChange}
-              style={{
-                ...styles.input,
-                ...(errors.address ? styles.inputError : {})
-              }}
-              disabled={saving}
-            />
-            {errors.address && <p style={styles.error}>{errors.address}</p>}
-          </div>
+            <div style={styles.formGroup}>
+              <label style={styles.label}>{t('auth.confirmPassword')}</label>
+              <input
+                type="password"
+                style={styles.input}
+                value={passwordData.confirmPassword}
+                onChange={(e) =>
+                  setPasswordData({ ...passwordData, confirmPassword: e.target.value })
+                }
+                required
+              />
+            </div>
 
-          <div style={styles.inputGroup}>
-            <label style={styles.label}>
-              Phone Number <span style={styles.required}>*</span>
-            </label>
-            <input
-              type="tel"
-              name="phone"
-              placeholder="+216 XX XXX XXX"
-              value={formData.phone}
-              onChange={handleChange}
-              style={{
-                ...styles.input,
-                ...(errors.phone ? styles.inputError : {})
-              }}
-              disabled={saving}
-            />
-            {errors.phone && <p style={styles.error}>{errors.phone}</p>}
-          </div>
-
-          <button
-            type="submit"
-            style={{ ...styles.button, ...(saving ? styles.buttonDisabled : {}) }}
-            disabled={saving}
-            onMouseEnter={(e) => !saving && (e.currentTarget.style.background = '#1d4ed8')}
-            onMouseLeave={(e) => !saving && (e.currentTarget.style.background = '#2563eb')}
-          >
-            {saving ? (
-              <>
-                <span>⏳</span>
-                <span>Saving Changes...</span>
-              </>
-            ) : (
-              <>
-                <span>💾</span>
-                <span>Save Changes</span>
-              </>
-            )}
-          </button>
-        </form>
+            <button
+              type="submit"
+              style={styles.button}
+              disabled={loading}
+              onMouseEnter={(e) => (e.target.style.background = '#1d4ed8')}
+              onMouseLeave={(e) => (e.target.style.background = '#2563eb')}
+            >
+              {loading ? t('common.loading') : t('settings.changePassword')}
+            </button>
+          </form>
+        )}
       </div>
     </div>
   );

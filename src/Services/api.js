@@ -1,38 +1,42 @@
-import axios from "axios";
-import { STORAGE_KEYS } from "../utils/constants";
+import axios from 'axios';
 
 const API = axios.create({
-  baseURL: "http://localhost:8080/api",
+  baseURL: 'http://localhost:8080/api',
+  headers: {
+    'Content-Type': 'application/json',
+  },
 });
 
-// Add token to EVERY request
+// Request interceptor - Add token to every request
 API.interceptors.request.use(
   (config) => {
-    // Get token from localStorage
-    const token = localStorage.getItem(STORAGE_KEYS.TOKEN);
+    const token = localStorage.getItem('governance_token');
     
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
       console.log('✅ Token added to request:', token.substring(0, 20) + '...');
     } else {
-      console.warn('⚠️ No token found in localStorage!');
+      console.log('⚠️ No token found in localStorage!');
     }
     
     return config;
   },
   (error) => {
+    console.error('❌ Request interceptor error:', error);
     return Promise.reject(error);
   }
 );
 
-// Handle 401/403 errors (token expired or invalid)
+// Response interceptor - Handle 401 errors
 API.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    return response;
+  },
   (error) => {
-    if (error.response?.status === 401 || error.response?.status === 403) {
-      console.error('❌ Authentication failed! Logging out...');
-      localStorage.removeItem(STORAGE_KEYS.TOKEN);
-      localStorage.removeItem(STORAGE_KEYS.USER);
+    if (error.response?.status === 401) {
+      console.log('🚫 401 Unauthorized - Token expired or invalid');
+      localStorage.removeItem('governance_token');
+      localStorage.removeItem('governance_user');
       window.location.href = '/login';
     }
     return Promise.reject(error);

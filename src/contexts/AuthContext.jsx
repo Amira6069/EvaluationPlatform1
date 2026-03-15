@@ -1,149 +1,91 @@
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
-import { STORAGE_KEYS } from '../utils/constants';
+import React, { createContext, useState, useContext, useEffect } from 'react';
 
 const AuthContext = createContext(null);
 
-// ✅ ADD THIS - Prevents double initialization
-let globalAuthState = {
-  token: null,
-  user: null,
-  initialized: false,
-};
-
 export const AuthProvider = ({ children }) => {
-  const mountedRef = useRef(false);
-  const [user, setUser] = useState(globalAuthState.user);
-  const [token, setToken] = useState(globalAuthState.token);
-  const [loading, setLoading] = useState(!globalAuthState.initialized);
+  const [user, setUser] = useState(null);
+  const [token, setToken] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
-  // Function to load auth from localStorage
-  const loadAuth = () => {
+  useEffect(() => {
+    console.log('🚀 AuthProvider mounted');
+    loadAuthFromStorage();
+  }, []);
+
+  const loadAuthFromStorage = () => {
     try {
-      const savedToken = localStorage.getItem(STORAGE_KEYS.TOKEN);
-      const savedUser = localStorage.getItem(STORAGE_KEYS.USER);
-
       console.log('🔍 Loading auth from localStorage...');
-      console.log('  Token:', savedToken ? 'EXISTS' : 'MISSING');
-      console.log('  User:', savedUser ? 'EXISTS' : 'MISSING');
+      const storedToken = localStorage.getItem('governance_token');
+      const storedUser = localStorage.getItem('governance_user');
+      
+      console.log('  Token:', storedToken ? 'EXISTS (' + storedToken.substring(0, 20) + '...)' : 'MISSING');
+      console.log('  User:', storedUser ? 'EXISTS' : 'MISSING');
 
-      if (savedToken && savedUser) {
-        const userData = JSON.parse(savedUser);
-        setToken(savedToken);
-        setUser(userData);
+      if (storedToken && storedUser) {
+        const parsedUser = JSON.parse(storedUser);
+        console.log('✅ Auth found in localStorage');
+        console.log('  User:', parsedUser);
         
-        // Update global state
-        globalAuthState.token = savedToken;
-        globalAuthState.user = userData;
-        globalAuthState.initialized = true;
-        
-        console.log('✅ Auth loaded successfully');
-        return true;
+        setToken(storedToken);
+        setUser(parsedUser);
+        setIsAuthenticated(true);
       } else {
         console.log('⚠️ No auth found in localStorage');
-        setToken(null);
-        setUser(null);
-        
-        globalAuthState.token = null;
-        globalAuthState.user = null;
-        globalAuthState.initialized = true;
-        
-        return false;
+        setIsAuthenticated(false);
       }
     } catch (error) {
       console.error('❌ Error loading auth:', error);
-      return false;
+      setIsAuthenticated(false);
+    } finally {
+      setLoading(false);
     }
   };
 
-  // Load auth on mount - only once
-  useEffect(() => {
-    if (mountedRef.current) {
-      console.log('⚠️ AuthProvider already mounted, skipping initialization');
-      return;
-    }
-    
-    console.log('🚀 AuthProvider mounted');
-    mountedRef.current = true;
-    
-    // Use global state if already initialized
-    if (globalAuthState.initialized) {
-      console.log('📦 Using cached auth state');
-      setToken(globalAuthState.token);
-      setUser(globalAuthState.user);
-      setLoading(false);
-    } else {
-      loadAuth();
-      setLoading(false);
-    }
-  }, []);
-
-  // Listen for storage changes
-  useEffect(() => {
-    const handleStorageChange = (e) => {
-      console.log('📢 Storage changed:', e.key);
-      
-      if (e.key === STORAGE_KEYS.TOKEN || e.key === STORAGE_KEYS.USER || e.key === null) {
-        console.log('🔄 Auth-related storage changed, reloading...');
-        loadAuth();
-      }
-    };
-
-    window.addEventListener('storage', handleStorageChange);
-
-    return () => {
-      window.removeEventListener('storage', handleStorageChange);
-    };
-  }, []);
-
-  const login = (token, userData) => {
+  const login = (newToken, newUser) => {
     console.log('🔐 AuthContext.login called');
-    console.log('  Token:', token.substring(0, 20) + '...');
-    console.log('  User:', userData);
+    console.log('  Token:', newToken?.substring(0, 20) + '...');
+    console.log('  User:', newUser);
 
-    // Save to localStorage
-    localStorage.setItem(STORAGE_KEYS.TOKEN, token);
-    localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(userData));
+    // ✅ FORCE SAVE TO LOCALSTORAGE
+    localStorage.setItem('governance_token', newToken);
+    localStorage.setItem('governance_user', JSON.stringify(newUser));
     
-    // Update state immediately
-    setToken(token);
-    setUser(userData);
-    
-    // Update global state
-    globalAuthState.token = token;
-    globalAuthState.user = userData;
-    globalAuthState.initialized = true;
+    console.log('💾 Saved to localStorage');
+    console.log('  Verify token:', localStorage.getItem('governance_token')?.substring(0, 20) + '...');
+    console.log('  Verify user:', localStorage.getItem('governance_user'));
+
+    // ✅ UPDATE STATE
+    setToken(newToken);
+    setUser(newUser);
+    setIsAuthenticated(true);
     
     console.log('✅ Auth state updated');
   };
 
   const logout = () => {
     console.log('👋 AuthContext.logout called');
-    
-    localStorage.removeItem(STORAGE_KEYS.TOKEN);
-    localStorage.removeItem(STORAGE_KEYS.USER);
-    
+    localStorage.removeItem('governance_token');
+    localStorage.removeItem('governance_user');
     setToken(null);
     setUser(null);
-    
-    globalAuthState.token = null;
-    globalAuthState.user = null;
-    globalAuthState.initialized = true;
+    setIsAuthenticated(false);
   };
 
   const value = {
     user,
     token,
     loading,
-    isAuthenticated: !!token && !!user,
+    isAuthenticated,
     login,
     logout,
   };
 
   console.log('🔍 AuthContext current state:', {
+    user: user?.email,
     hasToken: !!token,
-    hasUser: !!user,
-    isAuthenticated: !!token && !!user,
-    loading,
+    isAuthenticated,
+    loading
   });
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

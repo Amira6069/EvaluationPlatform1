@@ -1,26 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import {
-  getEvaluationForReview,
-  approveEvaluation,
-  rejectEvaluation,
-} from '../../Services/evaluatorService';
-import { GOVERNANCE_PRINCIPLES } from '../../utils/constants';
+import evaluationService from '../../Services/evaluationService';
+import evaluatorService from '../../Services/evaluatorService';
 
 const ReviewPage = () => {
-  const navigate = useNavigate();
   const { id } = useParams();
+  const navigate = useNavigate();
   const { t } = useTranslation();
-
-  const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
+  
   const [evaluation, setEvaluation] = useState(null);
-  const [responses, setResponses] = useState({});
-  const [existingReview, setExistingReview] = useState(null);
-  const [comments, setComments] = useState('');
-  const [showApproveModal, setShowApproveModal] = useState(false);
+  const [responses, setResponses] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [processing, setProcessing] = useState(false);
+  const [rejectReason, setRejectReason] = useState('');
   const [showRejectModal, setShowRejectModal] = useState(false);
+  const [showAllResponses, setShowAllResponses] = useState(false);
 
   useEffect(() => {
     loadEvaluation();
@@ -28,210 +23,171 @@ const ReviewPage = () => {
 
   const loadEvaluation = async () => {
     try {
-      setLoading(true);
-      const response = await getEvaluationForReview(id);
-      const { evaluation: evalData, responses: responsesData, review } = response.data;
-
+      console.log('📡 Loading evaluation:', id);
+      console.log('🔑 Current token:', localStorage.getItem('governance_token')?.substring(0, 20) + '...');
+      console.log('👤 Current user:', JSON.parse(localStorage.getItem('governance_user') || '{}'));
+      
+      console.log('🌐 Making request to:', `/evaluations/${id}`);
+      
+      const evalData = await evaluationService.getEvaluationById(id);
+      console.log('✅ Evaluation loaded:', evalData);
       setEvaluation(evalData);
-      setExistingReview(review);
-
-      // Convert responses array to object
-      const responsesObj = {};
-      responsesData.forEach((r) => {
-        const key = `${r.principleId}-${r.practiceId}-${r.criterionId}`;
-        responsesObj[key] = r;
-      });
-
-      setResponses(responsesObj);
-
-      if (review) {
-        setComments(review.evaluatorComments || '');
+      
+      // ✅ GET RESPONSES
+      try {
+        console.log('🌐 Making request to:', `/evaluations/${id}/responses`);
+        const responsesData = await evaluationService.getResponses(id);
+        console.log('✅ Loaded responses:', responsesData.length);
+        setResponses(responsesData);
+      } catch (error) {
+        console.error('❌ Error loading responses:', error);
+        console.error('❌ Response status:', error.response?.status);
+        console.error('❌ Response data:', error.response?.data);
+        // Don't fail the whole page if responses fail
       }
-
-      console.log('✅ Evaluation loaded for review');
+      
     } catch (error) {
       console.error('❌ Error loading evaluation:', error);
+      console.error('❌ Error status:', error.response?.status);
+      console.error('❌ Error data:', error.response?.data);
+      
+      if (error.response?.status === 403) {
+        alert('❌ Access denied: ' + (error.response?.data?.error || 'You do not have permission to view this evaluation'));
+        navigate('/evaluator/queue');
+      } else if (error.response?.status === 401) {
+        alert('Session expired. Please login again.');
+        navigate('/login');
+      } else {
+        alert('Failed to load evaluation: ' + (error.response?.data?.error || error.message));
+      }
     } finally {
       setLoading(false);
     }
   };
 
   const handleApprove = async () => {
+    if (!window.confirm(t('evaluator.confirmApproval'))) return;
+
     try {
-      setSubmitting(true);
-      await approveEvaluation(id, comments);
+      setProcessing(true);
+      const result = await evaluatorService.approveEvaluation(id);
       
-      alert(t('evaluation.approved') + '!');
+      alert(`✅ ${t('evaluator.evaluationApproved')}\n\nScore: ${Math.round(result.score)}%\nCertification: ${result.certificationLevel}\nRecommendations: ${result.recommendationsCount}`);
+      
       navigate('/evaluator/queue');
     } catch (error) {
       console.error('❌ Error approving:', error);
-      alert('Failed to approve evaluation');
+      alert('Failed to approve: ' + (error.response?.data?.error || error.message));
     } finally {
-      setSubmitting(false);
-      setShowApproveModal(false);
+      setProcessing(false);
     }
   };
 
   const handleReject = async () => {
-    if (!comments || comments.trim() === '') {
-      alert('Comments are required for rejection');
+    if (!rejectReason.trim()) {
+      alert('Please provide a reason for rejection');
       return;
     }
 
     try {
-      setSubmitting(true);
-      await rejectEvaluation(id, comments);
+      setProcessing(true);
+      await evaluatorService.rejectEvaluation(id, rejectReason);
       
-      alert(t('evaluation.rejected') + '!');
+      alert(t('evaluator.evaluationRejected'));
       navigate('/evaluator/queue');
     } catch (error) {
       console.error('❌ Error rejecting:', error);
-      alert('Failed to reject evaluation');
+      alert('Failed to reject: ' + (error.response?.data?.error || error.message));
     } finally {
-      setSubmitting(false);
+      setProcessing(false);
       setShowRejectModal(false);
     }
   };
 
-  const getScoreColor = (score) => {
-    if (score >= 80) return '#10b981';
-    if (score >= 60) return '#f59e0b';
-    if (score >= 40) return '#f97316';
+  const getCertificationLevel = (score) => {
+    if (score >= 90) return { name: 'Platinum', color: '#a78bfa' };
+    if (score >= 80) return { name: 'Gold', color: '#fbbf24' };
+    if (score >= 65) return { name: 'Silver', color: '#9ca3af' };
+    if (score >= 50) return { name: 'Bronze', color: '#cd7f32' };
+    return { name: 'Not Certified', color: '#6b7280' };
+  };
+
+  const getMaturityColor = (level) => {
+    if (level === 3) return '#10b981';
+    if (level === 2) return '#3b82f6';
+    if (level === 1) return '#f59e0b';
     return '#ef4444';
   };
 
-  const maturityLabels = [
-    t('evaluation.notExists'),
-    t('evaluation.inDevelopment'),
-    t('evaluation.completed'),
-    t('evaluation.validated'),
-  ];
+  const getMaturityLabel = (level) => {
+    const labels = {
+      0: t('ev.level0'),
+      1: t('ev.level1'),
+      2: t('ev.level2'),
+      3: t('ev.level3')
+    };
+    return labels[level] || `Level ${level}`;
+  };
 
   const styles = {
     container: { padding: '24px', maxWidth: '1200px', margin: '0 auto' },
-    header: {
+    header: { marginBottom: '32px' },
+    title: { fontSize: '28px', fontWeight: 'bold', color: '#111827', marginBottom: '8px' },
+    subtitle: { fontSize: '16px', color: '#6b7280' },
+    card: {
       background: 'white',
       borderRadius: '12px',
-      padding: '24px',
-      marginBottom: '24px',
+      padding: '32px',
       boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-    },
-    title: { fontSize: '28px', fontWeight: 'bold', color: '#111827', marginBottom: '8px' },
-    subtitle: { fontSize: '16px', color: '#6b7280', marginBottom: '16px' },
-    scoreHeader: {
-      display: 'flex',
-      alignItems: 'center',
-      gap: '24px',
-      padding: '16px',
-      background: '#f9fafb',
-      borderRadius: '8px',
+      marginBottom: '24px',
     },
     scoreCircle: {
-      width: '80px',
-      height: '80px',
+      width: '150px',
+      height: '150px',
       borderRadius: '50%',
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',
       justifyContent: 'center',
-      color: 'white',
+      margin: '0 auto 24px',
+      fontSize: '48px',
       fontWeight: 'bold',
-      fontSize: '24px',
     },
-    card: {
-      background: 'white',
-      borderRadius: '12px',
-      padding: '24px',
-      marginBottom: '20px',
-      boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-    },
-    principleHeader: {
-      padding: '16px 20px',
-      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-      borderRadius: '12px',
+    info: { fontSize: '14px', color: '#6b7280', marginBottom: '12px' },
+    infoLabel: { fontWeight: '600', color: '#374151' },
+    buttonGroup: { display: 'flex', gap: '12px', justifyContent: 'center', marginTop: '32px' },
+    approveButton: {
+      padding: '14px 32px',
+      background: '#10b981',
       color: 'white',
-      marginBottom: '20px',
-    },
-    principleTitle: { fontSize: '20px', fontWeight: 'bold' },
-    practiceCard: {
-      padding: '16px',
-      background: '#f9fafb',
-      borderRadius: '8px',
-      marginBottom: '12px',
-    },
-    practiceTitle: {
-      fontSize: '16px',
-      fontWeight: '600',
-      color: '#111827',
-      marginBottom: '12px',
-    },
-    criterionRow: {
-      padding: '12px',
-      background: 'white',
-      borderRadius: '6px',
-      marginBottom: '8px',
-      border: '1px solid #e5e7eb',
-    },
-    criterionText: {
-      fontSize: '14px',
-      color: '#374151',
-      marginBottom: '8px',
-      fontWeight: '500',
-    },
-    maturityBadge: {
-      display: 'inline-block',
-      padding: '4px 12px',
-      borderRadius: '8px',
-      fontSize: '13px',
-      fontWeight: '600',
-      marginBottom: '8px',
-    },
-    evidenceBox: {
-      padding: '8px 12px',
-      background: '#f9fafb',
-      borderRadius: '6px',
-      fontSize: '13px',
-      color: '#6b7280',
-      marginTop: '8px',
-    },
-    commentsSection: {
-      marginTop: '24px',
-    },
-    textarea: {
-      width: '100%',
-      padding: '12px',
-      border: '1px solid #d1d5db',
-      borderRadius: '8px',
-      fontSize: '14px',
-      minHeight: '100px',
-      resize: 'vertical',
-      boxSizing: 'border-box',
-    },
-    buttonGroup: {
-      display: 'flex',
-      gap: '12px',
-      marginTop: '24px',
-    },
-    button: {
-      padding: '12px 24px',
       border: 'none',
       borderRadius: '8px',
-      fontSize: '15px',
+      fontSize: '16px',
       fontWeight: '600',
       cursor: 'pointer',
       transition: 'background 0.2s',
     },
-    approveButton: {
-      background: '#10b981',
-      color: 'white',
-    },
     rejectButton: {
+      padding: '14px 32px',
       background: '#ef4444',
       color: 'white',
+      border: 'none',
+      borderRadius: '8px',
+      fontSize: '16px',
+      fontWeight: '600',
+      cursor: 'pointer',
+      transition: 'background 0.2s',
     },
     backButton: {
+      padding: '10px 20px',
       background: '#f3f4f6',
       color: '#374151',
+      border: 'none',
+      borderRadius: '8px',
+      fontSize: '14px',
+      fontWeight: '600',
+      cursor: 'pointer',
+      marginBottom: '24px',
     },
     modal: {
       position: 'fixed',
@@ -245,21 +201,65 @@ const ReviewPage = () => {
       justifyContent: 'center',
       zIndex: 1000,
     },
-    modalCard: {
+    modalContent: {
       background: 'white',
-      borderRadius: '16px',
+      borderRadius: '12px',
       padding: '32px',
       maxWidth: '500px',
       width: '90%',
-      boxShadow: '0 25px 50px rgba(0,0,0,0.25)',
     },
-    loading: { textAlign: 'center', padding: '60px', color: '#6b7280' },
+    textarea: {
+      width: '100%',
+      padding: '12px',
+      border: '1px solid #d1d5db',
+      borderRadius: '8px',
+      fontSize: '14px',
+      minHeight: '120px',
+      resize: 'vertical',
+      marginBottom: '16px',
+      boxSizing: 'border-box',
+    },
+    responseCard: {
+      padding: '16px',
+      background: '#f9fafb',
+      borderRadius: '8px',
+      marginBottom: '12px',
+      border: '1px solid #e5e7eb',
+    },
+    maturityBadge: {
+      display: 'inline-block',
+      padding: '4px 12px',
+      borderRadius: '12px',
+      fontSize: '12px',
+      fontWeight: '600',
+      marginLeft: '8px',
+    },
+    sectionTitle: {
+      fontSize: '18px',
+      fontWeight: '600',
+      color: '#111827',
+      marginBottom: '16px',
+      paddingBottom: '12px',
+      borderBottom: '2px solid #e5e7eb',
+    },
+    toggleButton: {
+      padding: '8px 16px',
+      background: '#2563eb',
+      color: 'white',
+      border: 'none',
+      borderRadius: '8px',
+      fontSize: '13px',
+      fontWeight: '600',
+      cursor: 'pointer',
+      marginTop: '12px',
+      transition: 'background 0.2s',
+    },
   };
 
   if (loading) {
     return (
       <div style={styles.container}>
-        <div style={styles.loading}>
+        <div style={{ textAlign: 'center', padding: '60px' }}>
           <div style={{ fontSize: '48px', marginBottom: '16px' }}>⏳</div>
           <p>{t('common.loading')}</p>
         </div>
@@ -270,218 +270,204 @@ const ReviewPage = () => {
   if (!evaluation) {
     return (
       <div style={styles.container}>
-        <div style={styles.loading}>
+        <div style={{ textAlign: 'center', padding: '60px' }}>
+          <div style={{ fontSize: '48px', marginBottom: '16px' }}>❌</div>
           <p>Evaluation not found</p>
+          <button
+            style={{ ...styles.backButton, marginTop: '20px' }}
+            onClick={() => navigate('/evaluator/queue')}
+          >
+            ← Back to Queue
+          </button>
         </div>
       </div>
     );
   }
 
-  const scoreColor = getScoreColor(evaluation.totalScore || 0);
+  const cert = getCertificationLevel(evaluation.totalScore || 0);
+  const displayedResponses = showAllResponses ? responses : responses.slice(0, 10);
 
   return (
     <div style={styles.container}>
-      {/* Header */}
-      <div style={styles.header}>
-        <h1 style={styles.title}>{evaluation.name}</h1>
-        <p style={styles.subtitle}>
-          {evaluation.organizationName} • {evaluation.period}
-        </p>
+      <button
+        style={styles.backButton}
+        onClick={() => navigate('/evaluator/queue')}
+      >
+        ← {t('common.back')}
+      </button>
 
-        <div style={styles.scoreHeader}>
-          <div style={{ ...styles.scoreCircle, background: scoreColor }}>
-            <span>{Math.round(evaluation.totalScore || 0)}%</span>
-            <span style={{ fontSize: '10px', fontWeight: '500' }}>{t('evaluation.score')}</span>
-          </div>
-          <div>
-            <div style={{ fontSize: '14px', color: '#6b7280', marginBottom: '4px' }}>
-              {t('evaluation.overallScore')}
-            </div>
-            <div style={{ fontSize: '20px', fontWeight: '600', color: '#111827' }}>
-              {Math.round(evaluation.totalScore || 0)}% - Governance Assessment
-            </div>
-          </div>
-        </div>
+      <div style={styles.header}>
+        <h1 style={styles.title}>{t('evaluator.reviewEvaluation')}</h1>
+        <p style={styles.subtitle}>{evaluation.name}</p>
       </div>
 
-      {/* Responses by Principle */}
-      {GOVERNANCE_PRINCIPLES.map((principle) => (
-        <div key={principle.id} style={styles.card}>
-          <div style={styles.principleHeader}>
-            <div style={styles.principleTitle}>
-              {t('evaluation.principle')} {principle.number}: {principle.name}
-            </div>
-          </div>
-
-          {principle.practices.map((practice) => (
-            <div key={practice.id} style={styles.practiceCard}>
-              <div style={styles.practiceTitle}>
-                {t('evaluation.practice')} {practice.id}: {practice.name}
-              </div>
-
-              {practice.criteria.map((criterion) => {
-                const key = `${principle.id}-${practice.id}-${criterion.id}`;
-                const response = responses[key];
-
-                if (!response) return null;
-
-                const maturityLevel = response.maturityLevel || 0;
-                const maturityColor =
-                  maturityLevel === 3
-                    ? '#10b981'
-                    : maturityLevel === 2
-                    ? '#3b82f6'
-                    : maturityLevel === 1
-                    ? '#f59e0b'
-                    : '#6b7280';
-
-                return (
-                  <div key={criterion.id} style={styles.criterionRow}>
-                    <div style={styles.criterionText}>
-                      <strong>C{criterion.id}:</strong> {criterion.text}
-                    </div>
-
-                    <div
-                      style={{
-                        ...styles.maturityBadge,
-                        background: maturityColor + '20',
-                        color: maturityColor,
-                      }}
-                    >
-                      Level {maturityLevel}: {maturityLabels[maturityLevel]}
-                    </div>
-
-                    {response.evidence && (
-                      <div style={styles.evidenceBox}>
-                        <strong>📎 {t('evaluation.evidence')}:</strong> {response.evidence}
-                      </div>
-                    )}
-
-                    {response.comments && (
-                      <div style={styles.evidenceBox}>
-                        <strong>💬 {t('evaluation.comments')}:</strong> {response.comments}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          ))}
-        </div>
-      ))}
-
-      {/* Evaluator Comments */}
       <div style={styles.card}>
-        <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '16px' }}>
-          Evaluator Comments
-        </h3>
-        <textarea
-          style={styles.textarea}
-          placeholder="Add your comments about this evaluation..."
-          value={comments}
-          onChange={(e) => setComments(e.target.value)}
-          disabled={existingReview !== null}
-        />
+        <div
+          style={{
+            ...styles.scoreCircle,
+            background: `linear-gradient(135deg, ${cert.color}20 0%, ${cert.color}40 100%)`,
+            border: `4px solid ${cert.color}`,
+            color: cert.color,
+          }}
+        >
+          <div>{Math.round(evaluation.totalScore || 0)}%</div>
+          <div style={{ fontSize: '14px', fontWeight: 'normal', marginTop: '8px' }}>
+            {t('results.finalScore')}
+          </div>
+        </div>
 
-        {existingReview ? (
+        <div style={{ textAlign: 'center', marginBottom: '32px' }}>
           <div
             style={{
-              marginTop: '16px',
-              padding: '12px',
-              background: existingReview.approvalStatus === 'APPROVED' ? '#d1fae5' : '#fee2e2',
-              color: existingReview.approvalStatus === 'APPROVED' ? '#065f46' : '#991b1b',
-              borderRadius: '8px',
+              display: 'inline-block',
+              padding: '8px 24px',
+              borderRadius: '20px',
+              background: cert.color + '20',
+              color: cert.color,
+              fontSize: '16px',
               fontWeight: '600',
             }}
           >
-            ✓ Already reviewed: {existingReview.approvalStatus}
-          </div>
-        ) : (
-          <div style={styles.buttonGroup}>
-            <button
-              style={{ ...styles.button, ...styles.backButton }}
-              onClick={() => navigate('/evaluator/queue')}
-            >
-              ← {t('common.back')}
-            </button>
-            <button
-              style={{ ...styles.button, ...styles.rejectButton }}
-              onClick={() => setShowRejectModal(true)}
-              onMouseEnter={(e) => (e.target.style.background = '#dc2626')}
-              onMouseLeave={(e) => (e.target.style.background = '#ef4444')}
-            >
-              ✗ {t('common.delete')} Reject
-            </button>
-            <button
-              style={{ ...styles.button, ...styles.approveButton }}
-              onClick={() => setShowApproveModal(true)}
-              onMouseEnter={(e) => (e.target.style.background = '#059669')}
-              onMouseLeave={(e) => (e.target.style.background = '#10b981')}
-            >
-              ✓ Approve
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* Approve Modal */}
-      {showApproveModal && (
-        <div style={styles.modal} onClick={() => setShowApproveModal(false)}>
-          <div style={styles.modalCard} onClick={(e) => e.stopPropagation()}>
-            <h3 style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '16px' }}>
-              Approve Evaluation
-            </h3>
-            <p style={{ marginBottom: '24px', color: '#6b7280' }}>
-              Are you sure you want to approve this evaluation?
-            </p>
-            <div style={{ display: 'flex', gap: '12px' }}>
-              <button
-                style={{ ...styles.button, ...styles.backButton, flex: 1 }}
-                onClick={() => setShowApproveModal(false)}
-              >
-                {t('common.cancel')}
-              </button>
-              <button
-                style={{ ...styles.button, ...styles.approveButton, flex: 1 }}
-                onClick={handleApprove}
-                disabled={submitting}
-              >
-                {submitting ? 'Approving...' : 'Confirm Approval'}
-              </button>
-            </div>
+            🏆 {cert.name}
           </div>
         </div>
-      )}
+
+        <div style={styles.info}>
+          <span style={styles.infoLabel}>Organization:</span> {evaluation.organization?.name || 'N/A'}
+        </div>
+        <div style={styles.info}>
+          <span style={styles.infoLabel}>{t('common.period')}:</span> {evaluation.period}
+        </div>
+        <div style={styles.info}>
+          <span style={styles.infoLabel}>{t('evaluation.submitted')}:</span>{' '}
+          {new Date(evaluation.submittedAt).toLocaleString()}
+        </div>
+        {evaluation.description && (
+          <div style={styles.info}>
+            <span style={styles.infoLabel}>{t('common.description')}:</span> {evaluation.description}
+          </div>
+        )}
+
+        {/* ✅ EVALUATION RESPONSES SECTION */}
+        {responses.length > 0 && (
+          <div style={{ marginTop: '32px', paddingTop: '24px', borderTop: '1px solid #e5e7eb' }}>
+            <h3 style={styles.sectionTitle}>
+              📋 {t('evaluator.evaluationResponses')} ({responses.length})
+            </h3>
+            
+            {displayedResponses.map((response, index) => (
+              <div key={index} style={styles.responseCard}>
+                <div style={{ fontSize: '14px', fontWeight: '600', color: '#111827', marginBottom: '8px' }}>
+                  Criterion #{response.criterionId}
+                  <span
+                    style={{
+                      ...styles.maturityBadge,
+                      background: getMaturityColor(response.maturityLevel) + '20',
+                      color: getMaturityColor(response.maturityLevel),
+                    }}
+                  >
+                    {getMaturityLabel(response.maturityLevel)}
+                  </span>
+                </div>
+                {response.evidence && (
+                  <div style={{ fontSize: '13px', color: '#6b7280', marginBottom: '6px' }}>
+                    <strong>{t('ev.evidence')}:</strong> {response.evidence}
+                  </div>
+                )}
+                {response.comments && (
+                  <div style={{ fontSize: '13px', color: '#6b7280' }}>
+                    <strong>{t('ev.comments')}:</strong> {response.comments}
+                  </div>
+                )}
+              </div>
+            ))}
+
+            {responses.length > 10 && (
+              <button
+                style={styles.toggleButton}
+                onClick={() => setShowAllResponses(!showAllResponses)}
+                onMouseEnter={(e) => (e.target.style.background = '#1d4ed8')}
+                onMouseLeave={(e) => (e.target.style.background = '#2563eb')}
+              >
+                {showAllResponses 
+                  ? `Show Less` 
+                  : `Show All ${responses.length} Responses`}
+              </button>
+            )}
+          </div>
+        )}
+
+        {responses.length === 0 && (
+          <div style={{ marginTop: '32px', paddingTop: '24px', borderTop: '1px solid #e5e7eb', textAlign: 'center' }}>
+            <div style={{ fontSize: '48px', marginBottom: '16px' }}>📝</div>
+            <p style={{ color: '#6b7280' }}>No responses available for this evaluation</p>
+          </div>
+        )}
+
+        <div style={styles.buttonGroup}>
+          <button
+            style={styles.approveButton}
+            onClick={handleApprove}
+            disabled={processing}
+            onMouseEnter={(e) => !processing && (e.target.style.background = '#059669')}
+            onMouseLeave={(e) => !processing && (e.target.style.background = '#10b981')}
+          >
+            {processing ? '⏳ Processing...' : `✓ ${t('evaluator.approveEvaluation')}`}
+          </button>
+          <button
+            style={styles.rejectButton}
+            onClick={() => setShowRejectModal(true)}
+            disabled={processing}
+            onMouseEnter={(e) => !processing && (e.target.style.background = '#dc2626')}
+            onMouseLeave={(e) => !processing && (e.target.style.background = '#ef4444')}
+          >
+            ✗ {t('evaluator.rejectEvaluation')}
+          </button>
+        </div>
+      </div>
 
       {/* Reject Modal */}
       {showRejectModal && (
         <div style={styles.modal} onClick={() => setShowRejectModal(false)}>
-          <div style={styles.modalCard} onClick={(e) => e.stopPropagation()}>
-            <h3 style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '16px' }}>
-              Reject Evaluation
+          <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '16px', color: '#111827' }}>
+              {t('evaluator.rejectEvaluation')}
             </h3>
-            <p style={{ marginBottom: '12px', color: '#6b7280' }}>
-              Please provide comments explaining the rejection:
+            <p style={{ fontSize: '14px', color: '#6b7280', marginBottom: '16px' }}>
+              Please provide a reason for rejection:
             </p>
             <textarea
-              style={{ ...styles.textarea, marginBottom: '24px' }}
-              placeholder="Comments required for rejection..."
-              value={comments}
-              onChange={(e) => setComments(e.target.value)}
+              style={styles.textarea}
+              value={rejectReason}
+              onChange={(e) => setRejectReason(e.target.value)}
+              placeholder="Enter reason for rejection..."
+              autoFocus
             />
-            <div style={{ display: 'flex', gap: '12px' }}>
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
               <button
-                style={{ ...styles.button, ...styles.backButton, flex: 1 }}
-                onClick={() => setShowRejectModal(false)}
+                style={{
+                  padding: '10px 20px',
+                  background: '#f3f4f6',
+                  color: '#374151',
+                  border: 'none',
+                  borderRadius: '8px',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                }}
+                onClick={() => {
+                  setShowRejectModal(false);
+                  setRejectReason('');
+                }}
               >
                 {t('common.cancel')}
               </button>
               <button
-                style={{ ...styles.button, ...styles.rejectButton, flex: 1 }}
+                style={styles.rejectButton}
                 onClick={handleReject}
-                disabled={submitting || !comments.trim()}
+                disabled={processing || !rejectReason.trim()}
               >
-                {submitting ? 'Rejecting...' : 'Confirm Rejection'}
+                {processing ? '⏳ Processing...' : t('evaluator.rejectEvaluation')}
               </button>
             </div>
           </div>

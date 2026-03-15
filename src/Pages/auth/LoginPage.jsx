@@ -1,72 +1,77 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { login as loginService } from '../../Services/authService';
 import { useAuth } from '../../contexts/AuthContext';
-import { ROUTES } from '../../utils/constants';
+import authService from '../../Services/authService';
 
 const LoginPage = () => {
   const navigate = useNavigate();
-  const { login } = useAuth();
   const { t } = useTranslation();
+  const { login } = useAuth();
   
   const [formData, setFormData] = useState({
     email: '',
     password: '',
   });
+  
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
-    setError('');
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setLoading(true);
+    console.log("=== LOGIN START ===");
+    
     setError('');
+    setLoading(true);
 
     try {
-      console.log('=== LOGIN START ===');
+      const response = await authService.login(formData.email, formData.password);
       
-      const response = await loginService(formData);
-      const data = response.data;
+      console.log('🔍 FULL LOGIN RESPONSE:', response);
+      console.log('🔍 Token:', response.token);
+      console.log('🔍 User:', response.user);
+      console.log('🔍 User Role:', response.user?.role);
+
+      // ✅ CRITICAL: MANUALLY SAVE TO LOCALSTORAGE FIRST
+      localStorage.setItem('governance_token', response.token);
+      localStorage.setItem('governance_user', JSON.stringify(response.user));
+
+      console.log('💾 MANUALLY SAVED TO LOCALSTORAGE');
+      console.log('📦 Verify token saved:', localStorage.getItem('governance_token')?.substring(0, 20));
+      console.log('📦 Verify user saved:', localStorage.getItem('governance_user'));
+
+      // ✅ THEN call login from AuthContext
+      login(response.token, response.user);
+
+      console.log('✅ Login successful, redirecting...');
+
+      // Small delay to ensure state updates
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Redirect based on role
+      const role = response.user.role;
       
-      const token = data.token || data.accessToken || data.jwt;
-      const userId = data.userId || data.id;
-      const email = data.email || formData.email;
-      const name = data.name || data.fullName;
-      const role = data.role;
-
-      if (!token) {
-        throw new Error(t('auth.noTokenReceived'));
-      }
-
-      const userData = { userId, email, name, role };
-      login(token, userData);
-
       if (role === 'ORGANIZATION') {
-        navigate(ROUTES.ORG_DASHBOARD);
+        console.log('➡️ Redirecting to organization dashboard');
+        navigate('/organization/dashboard', { replace: true });
       } else if (role === 'EVALUATOR') {
-        navigate(ROUTES.EVAL_DASHBOARD);
+        console.log('➡️ Redirecting to evaluator dashboard');
+        navigate('/evaluator/dashboard', { replace: true });
       } else if (role === 'ADMIN') {
-        navigate(ROUTES.ADMIN_DASHBOARD);
+        console.log('➡️ Redirecting to admin dashboard');
+        navigate('/admin/dashboard', { replace: true });
       } else {
-        navigate('/');
+        console.log('❌ Unknown role:', role);
+        setError('Unknown user role');
       }
-      
+
     } catch (err) {
-      console.error('Login error:', err);
+      console.error("❌ LOGIN ERROR:", err);
+      console.error("Error response:", err.response);
+      console.error("Error data:", err.response?.data);
       
-      if (err.response?.status === 401) {
-        setError(t('auth.invalidCredentials'));
-      } else if (err.response?.data?.message) {
-        setError(err.response.data.message);
-      } else {
-        setError(err.message || t('auth.loginFailed'));
-      }
-    } finally {
+      const errorMessage = err.response?.data?.error || err.message || 'Login failed';
+      setError(errorMessage);
       setLoading(false);
     }
   };
@@ -83,59 +88,54 @@ const LoginPage = () => {
     card: {
       background: 'white',
       borderRadius: '16px',
-      boxShadow: '0 10px 25px rgba(0,0,0,0.2)',
+      boxShadow: '0 10px 40px rgba(0,0,0,0.1)',
       padding: '48px',
       width: '100%',
-      maxWidth: '450px',
+      maxWidth: '440px',
     },
     logo: {
       textAlign: 'center',
       marginBottom: '32px',
     },
     logoIcon: {
-      width: '60px',
-      height: '60px',
-      background: '#2563eb',
-      borderRadius: '12px',
-      display: 'inline-flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      fontSize: '30px',
+      fontSize: '48px',
       marginBottom: '16px',
     },
-    title: {
+    logoText: {
       fontSize: '28px',
       fontWeight: 'bold',
-      color: '#111827',
-      textAlign: 'center',
+      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+      WebkitBackgroundClip: 'text',
+      WebkitTextFillColor: 'transparent',
+      backgroundClip: 'text',
+    },
+    title: {
+      fontSize: '24px',
+      fontWeight: 'bold',
+      color: '#1f2937',
       marginBottom: '8px',
+      textAlign: 'center',
     },
     subtitle: {
-      fontSize: '16px',
+      fontSize: '14px',
       color: '#6b7280',
-      textAlign: 'center',
       marginBottom: '32px',
+      textAlign: 'center',
     },
-    form: {
-      display: 'flex',
-      flexDirection: 'column',
-      gap: '20px',
-    },
-    inputGroup: {
-      display: 'flex',
-      flexDirection: 'column',
+    formGroup: {
+      marginBottom: '24px',
     },
     label: {
-      marginBottom: '8px',
+      display: 'block',
       fontSize: '14px',
-      fontWeight: '500',
+      fontWeight: '600',
       color: '#374151',
+      marginBottom: '8px',
     },
     input: {
+      width: '100%',
       padding: '12px 16px',
-      borderWidth: '1px',
-      borderStyle: 'solid',
-      borderColor: '#d1d5db',
+      border: '1px solid #d1d5db',
       borderRadius: '8px',
       fontSize: '15px',
       outline: 'none',
@@ -143,20 +143,17 @@ const LoginPage = () => {
       boxSizing: 'border-box',
     },
     button: {
+      width: '100%',
       padding: '14px',
-      background: '#2563eb',
+      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
       color: 'white',
       border: 'none',
       borderRadius: '8px',
       fontSize: '16px',
       fontWeight: '600',
       cursor: 'pointer',
-      transition: 'background 0.2s',
+      transition: 'transform 0.2s',
       marginTop: '8px',
-    },
-    buttonDisabled: {
-      opacity: 0.6,
-      cursor: 'not-allowed',
     },
     error: {
       padding: '12px 16px',
@@ -165,6 +162,7 @@ const LoginPage = () => {
       borderRadius: '8px',
       color: '#dc2626',
       fontSize: '14px',
+      marginBottom: '16px',
     },
     footer: {
       marginTop: '24px',
@@ -173,9 +171,10 @@ const LoginPage = () => {
       color: '#6b7280',
     },
     link: {
-      color: '#2563eb',
+      color: '#667eea',
       textDecoration: 'none',
-      fontWeight: '500',
+      fontWeight: '600',
+      marginLeft: '4px',
     },
   };
 
@@ -184,59 +183,62 @@ const LoginPage = () => {
       <div style={styles.card}>
         <div style={styles.logo}>
           <div style={styles.logoIcon}>🏛️</div>
-          <h1 style={styles.title}>{t('auth.signInTitle')}</h1>
-          <p style={styles.subtitle}>{t('auth.signInSubtitle')}</p>
+          <div style={styles.logoText}>GovEval</div>
         </div>
 
-        {error && <div style={styles.error}>⚠️ {error}</div>}
+        <h2 style={styles.title}>{t('auth.welcomeBack')}</h2>
+        <p style={styles.subtitle}>{t('auth.signInToContinue')}</p>
 
-        <form onSubmit={handleSubmit} style={styles.form}>
-          <div style={styles.inputGroup}>
-            <label style={styles.label}>{t('common.email')}</label>
+        {error && (
+          <div style={styles.error}>
+            ⚠️ {error}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit}>
+          <div style={styles.formGroup}>
+            <label style={styles.label}>{t('auth.email')}</label>
             <input
               type="email"
-              name="email"
+              style={styles.input}
               placeholder={t('auth.enterEmail')}
               value={formData.email}
-              onChange={handleChange}
-              style={styles.input}
+              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
               required
-              disabled={loading}
+              onFocus={(e) => (e.target.style.borderColor = '#667eea')}
+              onBlur={(e) => (e.target.style.borderColor = '#d1d5db')}
             />
           </div>
 
-          <div style={styles.inputGroup}>
-            <label style={styles.label}>{t('common.password')}</label>
+          <div style={styles.formGroup}>
+            <label style={styles.label}>{t('auth.password')}</label>
             <input
               type="password"
-              name="password"
+              style={styles.input}
               placeholder={t('auth.enterPassword')}
               value={formData.password}
-              onChange={handleChange}
-              style={styles.input}
+              onChange={(e) => setFormData({ ...formData, password: e.target.value })}
               required
-              disabled={loading}
+              onFocus={(e) => (e.target.style.borderColor = '#667eea')}
+              onBlur={(e) => (e.target.style.borderColor = '#d1d5db')}
             />
           </div>
 
           <button
             type="submit"
-            style={{
-              ...styles.button,
-              ...(loading ? styles.buttonDisabled : {}),
-            }}
+            style={styles.button}
             disabled={loading}
-            onMouseEnter={(e) => !loading && (e.currentTarget.style.background = '#1d4ed8')}
-            onMouseLeave={(e) => !loading && (e.currentTarget.style.background = '#2563eb')}
+            onMouseEnter={(e) => (e.target.style.transform = 'scale(1.02)')}
+            onMouseLeave={(e) => (e.target.style.transform = 'scale(1)')}
           >
-            {loading ? `⏳ ${t('auth.signingIn')}` : `🔓 ${t('auth.signIn')}`}
+            {loading ? 'Signing in...' : t('auth.signIn')}
           </button>
         </form>
 
         <div style={styles.footer}>
-          {t('auth.noAccount')}{' '}
-          <Link to={ROUTES.REGISTER} style={styles.link}>
-            {t('auth.registerHere')}
+          {t('auth.dontHaveAccount')}
+          <Link to="/register" style={styles.link}>
+            {t('auth.signUp')}
           </Link>
         </div>
       </div>

@@ -1,17 +1,27 @@
 import API from './api';
 
-export const login = (credentials) => {
-  console.log('🔐 authService.login called with:', credentials.email);
-  return API.post('/auth/login', credentials);
+const authService = {
+  login: async (email, password) => {
+    console.log('🔐 authService.login called with:', email);
+    const response = await API.post('/auth/login', { email, password });
+    return response.data;
+  },
+
+  register: async (userData) => {
+    console.log('📝 authService.register called');
+    const response = await API.post('/auth/register', userData);
+    return response.data;
+  },
+
+  logout: () => {
+    console.log('👋 authService.logout called');
+    localStorage.removeItem('governance_token');
+    localStorage.removeItem('governance_user');
+  }
 };
 
-export const register = (userData) => {
-  console.log('📝 authService.register called');
-  return API.post('/auth/register', userData);
-};
-
-export const logout = () => {
-  console.log('👋 authService.logout called');
-  localStorage.removeItem('governance_token');
-  localStorage.removeItem('governance_user');
-};
+// ✅ Export both default and named exports
+export default authService;
+export const login = authService.login;
+export const register = authService.register;
+export const logout = authService.logout;
