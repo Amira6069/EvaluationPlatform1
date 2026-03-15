@@ -19,6 +19,7 @@ const EvaluationsPage = () => {
     try {
       const data = await evaluationService.getMyEvaluations();
       setEvaluations(data);
+      console.log('✅ Evaluations loaded:', data.length);
     } catch (error) {
       console.error('❌ Error loading evaluations:', error);
     } finally {
@@ -39,74 +40,155 @@ const EvaluationsPage = () => {
     }
   };
 
-  const getFilteredEvaluations = () => {
-    if (filter === 'all') return evaluations;
-    return evaluations.filter(e => e.status === filter);
+  const getStatusColor = (status) => {
+    const colors = {
+      CREATED: '#6b7280',
+      IN_PROGRESS: '#3b82f6',
+      SUBMITTED: '#f59e0b',
+      APPROVED: '#10b981',
+      REJECTED: '#ef4444',
+    };
+    return colors[status] || '#6b7280';
   };
 
-  const getStatusColor = (status) => {
-    switch (status) {
-      case 'CREATED':
-      case 'IN_PROGRESS':
-        return '#f59e0b';
-      case 'SUBMITTED':
-      case 'UNDER_REVIEW':
-        return '#3b82f6';
-      case 'APPROVED':
-        return '#10b981';
-      case 'REJECTED':
-        return '#ef4444';
-      default:
-        return '#6b7280';
-    }
+  const getStatusIcon = (status) => {
+    const icons = {
+      CREATED: '📝',
+      IN_PROGRESS: '⏳',
+      SUBMITTED: '📤',
+      APPROVED: '✅',
+      REJECTED: '❌',
+    };
+    return icons[status] || '📋';
   };
+
+  const filteredEvaluations = evaluations.filter(e => {
+    if (filter === 'all') return true;
+    return e.status === filter;
+  });
 
   const styles = {
     container: { padding: '24px', maxWidth: '1400px', margin: '0 auto' },
-    header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' },
+    header: {
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: '32px',
+    },
     title: { fontSize: '28px', fontWeight: 'bold', color: '#111827' },
-    button: {
+    newButton: {
       padding: '12px 24px',
-      background: '#2563eb',
+      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
       color: 'white',
       border: 'none',
       borderRadius: '8px',
       fontSize: '15px',
       fontWeight: '600',
       cursor: 'pointer',
+      display: 'flex',
+      alignItems: 'center',
+      gap: '8px',
     },
-    filters: { display: 'flex', gap: '12px', marginBottom: '24px' },
+    filters: {
+      display: 'flex',
+      gap: '12px',
+      marginBottom: '24px',
+      flexWrap: 'wrap',
+    },
     filterButton: {
       padding: '8px 16px',
-      border: '1px solid #d1d5db',
-      borderRadius: '8px',
       background: 'white',
-      cursor: 'pointer',
+      border: '2px solid #e5e7eb',
+      borderRadius: '8px',
       fontSize: '14px',
+      fontWeight: '600',
+      cursor: 'pointer',
+      transition: 'all 0.2s',
     },
     filterButtonActive: {
-      background: '#2563eb',
+      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
       color: 'white',
-      border: '1px solid #2563eb',
+      borderColor: '#667eea',
     },
-    table: { width: '100%', background: 'white', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' },
-    th: { padding: '16px', textAlign: 'left', background: '#f9fafb', fontSize: '14px', fontWeight: '600', color: '#374151', borderBottom: '1px solid #e5e7eb' },
-    td: { padding: '16px', borderBottom: '1px solid #e5e7eb', fontSize: '14px', color: '#6b7280' },
+    grid: {
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))',
+      gap: '24px',
+    },
+    card: {
+      background: 'white',
+      borderRadius: '16px',
+      padding: '24px',
+      boxShadow: '0 4px 6px rgba(0,0,0,0.07)',
+      border: '1px solid #f3f4f6',
+      transition: 'all 0.3s',
+      cursor: 'pointer',
+    },
+    cardHover: {
+      transform: 'translateY(-4px)',
+      boxShadow: '0 12px 24px rgba(0,0,0,0.15)',
+    },
+    cardHeader: {
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'flex-start',
+      marginBottom: '16px',
+    },
+    cardTitle: {
+      fontSize: '18px',
+      fontWeight: 'bold',
+      color: '#111827',
+      marginBottom: '8px',
+    },
     statusBadge: {
-      display: 'inline-block',
-      padding: '4px 12px',
-      borderRadius: '12px',
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: '6px',
+      padding: '6px 12px',
+      borderRadius: '20px',
       fontSize: '12px',
       fontWeight: '600',
     },
+    cardMeta: {
+      fontSize: '13px',
+      color: '#6b7280',
+      marginBottom: '4px',
+    },
+    scoreCircle: {
+      width: '60px',
+      height: '60px',
+      borderRadius: '50%',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      fontSize: '18px',
+      fontWeight: 'bold',
+      margin: '16px auto',
+    },
+    actions: {
+      display: 'flex',
+      gap: '8px',
+      marginTop: '16px',
+      paddingTop: '16px',
+      borderTop: '1px solid #f3f4f6',
+    },
     actionButton: {
-      padding: '6px 12px',
+      flex: 1,
+      padding: '10px',
       border: 'none',
-      borderRadius: '6px',
+      borderRadius: '8px',
       fontSize: '13px',
       fontWeight: '600',
       cursor: 'pointer',
-      marginRight: '8px',
+      transition: 'all 0.2s',
+    },
+    emptyState: {
+      textAlign: 'center',
+      padding: '80px 20px',
+      background: 'white',
+      borderRadius: '16px',
+      boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
     },
   };
 
@@ -121,24 +203,23 @@ const EvaluationsPage = () => {
     );
   }
 
-  const filteredEvaluations = getFilteredEvaluations();
-
   return (
     <div style={styles.container}>
       <div style={styles.header}>
         <h1 style={styles.title}>{t('evaluation.myEvaluations')}</h1>
         <button
-          style={styles.button}
+          style={styles.newButton}
           onClick={() => navigate('/organization/evaluations/new')}
-          onMouseEnter={(e) => (e.target.style.background = '#1d4ed8')}
-          onMouseLeave={(e) => (e.target.style.background = '#2563eb')}
+          onMouseEnter={(e) => (e.target.style.transform = 'scale(1.05)')}
+          onMouseLeave={(e) => (e.target.style.transform = 'scale(1)')}
         >
-          + {t('evaluation.newEvaluation')}
+          <span>➕</span>
+          {t('evaluation.newEvaluation')}
         </button>
       </div>
 
       <div style={styles.filters}>
-        {['all', 'CREATED', 'IN_PROGRESS', 'SUBMITTED', 'APPROVED', 'REJECTED'].map((status) => (
+        {['all', 'CREATED', 'IN_PROGRESS', 'SUBMITTED', 'APPROVED', 'REJECTED'].map(status => (
           <button
             key={status}
             style={{
@@ -147,111 +228,156 @@ const EvaluationsPage = () => {
             }}
             onClick={() => setFilter(status)}
           >
-            {status === 'all' ? 'All' : t(`evaluation.${status.toLowerCase()}`)}
+            {status === 'all' ? 'All' : t(`evaluation.${status.toLowerCase().replace('_', '-')}`)}
+            {status !== 'all' && ` (${evaluations.filter(e => e.status === status).length})`}
           </button>
         ))}
       </div>
 
       {filteredEvaluations.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '60px', background: 'white', borderRadius: '12px' }}>
+        <div style={styles.emptyState}>
           <div style={{ fontSize: '64px', marginBottom: '16px' }}>📋</div>
-          <h3 style={{ fontSize: '18px', color: '#111827', marginBottom: '8px' }}>
+          <h3 style={{ fontSize: '20px', color: '#111827', marginBottom: '8px' }}>
             {t('evaluation.noEvaluations')}
           </h3>
           <p style={{ color: '#6b7280', marginBottom: '24px' }}>
             {t('evaluation.createFirst')}
           </p>
           <button
-            style={styles.button}
+            style={styles.newButton}
             onClick={() => navigate('/organization/evaluations/new')}
           >
+            <span>➕</span>
             {t('evaluation.createEvaluation')}
           </button>
         </div>
       ) : (
-        <div style={styles.table}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr>
-                <th style={styles.th}>{t('evaluation.evaluationName')}</th>
-                <th style={styles.th}>{t('common.period')}</th>
-                <th style={styles.th}>{t('common.status')}</th>
-                <th style={styles.th}>{t('common.score')}</th>
-                <th style={styles.th}>{t('evaluation.created')}</th>
-                <th style={styles.th}>{t('common.actions')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredEvaluations.map((evaluation) => (
-                <tr key={evaluation.evaluationId}>
-                  <td style={styles.td}>
-                    <strong style={{ color: '#111827' }}>{evaluation.name}</strong>
-                  </td>
-                  <td style={styles.td}>{evaluation.period}</td>
-                  <td style={styles.td}>
-                    <span
+        <div style={styles.grid}>
+          {filteredEvaluations.map((evaluation) => {
+            const statusColor = getStatusColor(evaluation.status);
+            const statusIcon = getStatusIcon(evaluation.status);
+
+            return (
+              <div
+                key={evaluation.evaluationId}
+                style={styles.card}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-4px)';
+                  e.currentTarget.style.boxShadow = '0 12px 24px rgba(0,0,0,0.15)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.07)';
+                }}
+              >
+                <div style={styles.cardHeader}>
+                  <div style={{ flex: 1 }}>
+                    <div style={styles.cardTitle}>{evaluation.name}</div>
+                    <div style={styles.cardMeta}>📅 {evaluation.period}</div>
+                    <div style={styles.cardMeta}>
+                      🕒 {new Date(evaluation.createdAt).toLocaleDateString()}
+                    </div>
+                  </div>
+                  <div
+                    style={{
+                      ...styles.statusBadge,
+                      background: statusColor + '20',
+                      color: statusColor,
+                    }}
+                  >
+                    <span>{statusIcon}</span>
+                    {t(`evaluation.${evaluation.status.toLowerCase().replace('_', '-')}`)}
+                  </div>
+                </div>
+
+                {evaluation.totalScore != null && (
+                  <div
+                    style={{
+                      ...styles.scoreCircle,
+                      background: `linear-gradient(135deg, ${statusColor}20 0%, ${statusColor}40 100%)`,
+                      border: `3px solid ${statusColor}`,
+                      color: statusColor,
+                    }}
+                  >
+                    <div>{Math.round(evaluation.totalScore)}%</div>
+                    <div style={{ fontSize: '10px', marginTop: '4px' }}>Score</div>
+                  </div>
+                )}
+
+                <div style={styles.actions}>
+                  {evaluation.status === 'CREATED' || evaluation.status === 'IN_PROGRESS' ? (
+                    <button
                       style={{
-                        ...styles.statusBadge,
-                        background: getStatusColor(evaluation.status) + '20',
-                        color: getStatusColor(evaluation.status),
+                        ...styles.actionButton,
+                        background: '#3b82f6',
+                        color: 'white',
                       }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigate(`/organization/evaluations/edit/${evaluation.evaluationId}`);
+                      }}
+                      onMouseEnter={(e) => (e.target.style.background = '#2563eb')}
+                      onMouseLeave={(e) => (e.target.style.background = '#3b82f6')}
                     >
-                      {t(`evaluation.${evaluation.status.toLowerCase()}`)}
-                    </span>
-                  </td>
-                  <td style={styles.td}>
-                    {evaluation.totalScore ? Math.round(evaluation.totalScore) + '%' : '-'}
-                  </td>
-                  <td style={styles.td}>
-                    {new Date(evaluation.createdAt).toLocaleDateString()}
-                  </td>
-                  <td style={styles.td}>
-                    {(evaluation.status === 'CREATED' || evaluation.status === 'IN_PROGRESS') && (
-                      <>
-                        <button
-                          style={{
-                            ...styles.actionButton,
-                            background: '#2563eb',
-                            color: 'white',
-                          }}
-                          onClick={() => navigate(`/organization/evaluations/${evaluation.evaluationId}`)}
-                        >
-                          {t('common.edit')}
-                        </button>
-                        <button
-                          style={{
-                            ...styles.actionButton,
-                            background: '#ef4444',
-                            color: 'white',
-                          }}
-                          onClick={() => handleDelete(evaluation.evaluationId)}
-                        >
-                          {t('common.delete')}
-                        </button>
-                      </>
-                    )}
-                    {evaluation.status === 'APPROVED' && (
-                      <button
-                        style={{
-                          ...styles.actionButton,
-                          background: '#10b981',
-                          color: 'white',
-                        }}
-                        onClick={() => navigate('/organization/results')}
-                      >
-                        {t('results.viewCertificate')}
-                      </button>
-                    )}
-                    {(evaluation.status === 'SUBMITTED' || evaluation.status === 'UNDER_REVIEW') && (
-                      <span style={{ fontSize: '13px', color: '#6b7280' }}>
-                        {t('results.pendingApproval')}
-                      </span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                      ✏️ {t('evaluation.continueEvaluation')}
+                    </button>
+                  ) : (
+                    <button
+                      style={{
+                        ...styles.actionButton,
+                        background: '#f3f4f6',
+                        color: '#374151',
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigate(`/organization/evaluations/edit/${evaluation.evaluationId}`);
+                      }}
+                      onMouseEnter={(e) => (e.target.style.background = '#e5e7eb')}
+                      onMouseLeave={(e) => (e.target.style.background = '#f3f4f6')}
+                    >
+                      👁️ {t('common.view')}
+                    </button>
+                  )}
+
+                  {(evaluation.status === 'CREATED' || evaluation.status === 'IN_PROGRESS') && (
+                    <button
+                      style={{
+                        ...styles.actionButton,
+                        background: '#fee2e2',
+                        color: '#dc2626',
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDelete(evaluation.evaluationId);
+                      }}
+                      onMouseEnter={(e) => (e.target.style.background = '#fecaca')}
+                      onMouseLeave={(e) => (e.target.style.background = '#fee2e2')}
+                    >
+                      🗑️ {t('common.delete')}
+                    </button>
+                  )}
+
+                  {evaluation.status === 'APPROVED' && (
+                    <button
+                      style={{
+                        ...styles.actionButton,
+                        background: '#d1fae5',
+                        color: '#065f46',
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigate('/organization/results');
+                      }}
+                      onMouseEnter={(e) => (e.target.style.background = '#a7f3d0')}
+                      onMouseLeave={(e) => (e.target.style.background = '#d1fae5')}
+                    >
+                      🏆 {t('results.viewCertificate')}
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

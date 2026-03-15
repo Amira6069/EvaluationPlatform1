@@ -43,7 +43,6 @@ const ReviewPage = () => {
         console.error('❌ Error loading responses:', error);
         console.error('❌ Response status:', error.response?.status);
         console.error('❌ Response data:', error.response?.data);
-        // Don't fail the whole page if responses fail
       }
       
     } catch (error) {
@@ -66,13 +65,13 @@ const ReviewPage = () => {
   };
 
   const handleApprove = async () => {
-    if (!window.confirm(t('evaluator.confirmApproval'))) return;
+    if (!window.confirm('Are you sure you want to approve this evaluation?')) return;
 
     try {
       setProcessing(true);
       const result = await evaluatorService.approveEvaluation(id);
       
-      alert(`✅ ${t('evaluator.evaluationApproved')}\n\nScore: ${Math.round(result.score)}%\nCertification: ${result.certificationLevel}\nRecommendations: ${result.recommendationsCount}`);
+      alert(`✅ Evaluation approved successfully!\n\nScore: ${Math.round(result.score)}%\nCertification: ${result.certificationLevel}\nRecommendations: ${result.recommendationsCount}`);
       
       navigate('/evaluator/queue');
     } catch (error) {
@@ -93,7 +92,7 @@ const ReviewPage = () => {
       setProcessing(true);
       await evaluatorService.rejectEvaluation(id, rejectReason);
       
-      alert(t('evaluator.evaluationRejected'));
+      alert('Evaluation rejected successfully');
       navigate('/evaluator/queue');
     } catch (error) {
       console.error('❌ Error rejecting:', error);
@@ -101,6 +100,34 @@ const ReviewPage = () => {
     } finally {
       setProcessing(false);
       setShowRejectModal(false);
+    }
+  };
+
+  const handleFileDownload = async (filename) => {
+    try {
+      const token = localStorage.getItem('governance_token');
+      const response = await fetch(`http://localhost:8080/api/files/download/${id}/${filename}`, {
+        headers: {
+          'Authorization': 'Bearer ' + token
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('Download failed');
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename.split('_').pop(); // Get original filename
+      a.click();
+      window.URL.revokeObjectURL(url);
+
+      console.log('✅ File downloaded:', filename);
+    } catch (error) {
+      console.error('❌ Download error:', error);
+      alert('Failed to download file');
     }
   };
 
@@ -121,16 +148,16 @@ const ReviewPage = () => {
 
   const getMaturityLabel = (level) => {
     const labels = {
-      0: t('ev.level0'),
-      1: t('ev.level1'),
-      2: t('ev.level2'),
-      3: t('ev.level3')
+      0: 'Not Implemented',
+      1: 'Partially Implemented',
+      2: 'Largely Implemented',
+      3: 'Fully Implemented'
     };
     return labels[level] || `Level ${level}`;
   };
 
   const styles = {
-    container: { padding: '24px', maxWidth: '1200px', margin: '0 auto' },
+    container: { padding: '24px', maxWidth: '1400px', margin: '0 auto' },
     header: { marginBottom: '32px' },
     title: { fontSize: '28px', fontWeight: 'bold', color: '#111827', marginBottom: '8px' },
     subtitle: { fontSize: '16px', color: '#6b7280' },
@@ -220,39 +247,54 @@ const ReviewPage = () => {
       boxSizing: 'border-box',
     },
     responseCard: {
-      padding: '16px',
+      padding: '20px',
       background: '#f9fafb',
-      borderRadius: '8px',
-      marginBottom: '12px',
+      borderRadius: '12px',
+      marginBottom: '16px',
       border: '1px solid #e5e7eb',
     },
     maturityBadge: {
       display: 'inline-block',
-      padding: '4px 12px',
-      borderRadius: '12px',
-      fontSize: '12px',
+      padding: '6px 16px',
+      borderRadius: '20px',
+      fontSize: '13px',
       fontWeight: '600',
-      marginLeft: '8px',
+      marginLeft: '12px',
     },
     sectionTitle: {
-      fontSize: '18px',
+      fontSize: '20px',
       fontWeight: '600',
       color: '#111827',
-      marginBottom: '16px',
+      marginBottom: '20px',
       paddingBottom: '12px',
       borderBottom: '2px solid #e5e7eb',
     },
     toggleButton: {
-      padding: '8px 16px',
+      padding: '10px 20px',
       background: '#2563eb',
       color: 'white',
       border: 'none',
       borderRadius: '8px',
-      fontSize: '13px',
+      fontSize: '14px',
       fontWeight: '600',
       cursor: 'pointer',
-      marginTop: '12px',
+      marginTop: '16px',
       transition: 'background 0.2s',
+    },
+    downloadButton: {
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: '8px',
+      padding: '10px 20px',
+      background: '#3b82f6',
+      color: 'white',
+      borderRadius: '8px',
+      textDecoration: 'none',
+      fontSize: '14px',
+      fontWeight: '600',
+      cursor: 'pointer',
+      border: 'none',
+      marginTop: '12px',
     },
   };
 
@@ -261,7 +303,7 @@ const ReviewPage = () => {
       <div style={styles.container}>
         <div style={{ textAlign: 'center', padding: '60px' }}>
           <div style={{ fontSize: '48px', marginBottom: '16px' }}>⏳</div>
-          <p>{t('common.loading')}</p>
+          <p>Loading evaluation...</p>
         </div>
       </div>
     );
@@ -293,15 +335,16 @@ const ReviewPage = () => {
         style={styles.backButton}
         onClick={() => navigate('/evaluator/queue')}
       >
-        ← {t('common.back')}
+        ← Back to Queue
       </button>
 
       <div style={styles.header}>
-        <h1 style={styles.title}>{t('evaluator.reviewEvaluation')}</h1>
+        <h1 style={styles.title}>Review Evaluation</h1>
         <p style={styles.subtitle}>{evaluation.name}</p>
       </div>
 
       <div style={styles.card}>
+        {/* Score Circle */}
         <div
           style={{
             ...styles.scoreCircle,
@@ -312,19 +355,20 @@ const ReviewPage = () => {
         >
           <div>{Math.round(evaluation.totalScore || 0)}%</div>
           <div style={{ fontSize: '14px', fontWeight: 'normal', marginTop: '8px' }}>
-            {t('results.finalScore')}
+            Final Score
           </div>
         </div>
 
+        {/* Certification Badge */}
         <div style={{ textAlign: 'center', marginBottom: '32px' }}>
           <div
             style={{
               display: 'inline-block',
-              padding: '8px 24px',
-              borderRadius: '20px',
+              padding: '10px 28px',
+              borderRadius: '24px',
               background: cert.color + '20',
               color: cert.color,
-              fontSize: '16px',
+              fontSize: '18px',
               fontWeight: '600',
             }}
           >
@@ -332,51 +376,77 @@ const ReviewPage = () => {
           </div>
         </div>
 
+        {/* Evaluation Info */}
         <div style={styles.info}>
           <span style={styles.infoLabel}>Organization:</span> {evaluation.organization?.name || 'N/A'}
         </div>
         <div style={styles.info}>
-          <span style={styles.infoLabel}>{t('common.period')}:</span> {evaluation.period}
+          <span style={styles.infoLabel}>Period:</span> {evaluation.period}
         </div>
         <div style={styles.info}>
-          <span style={styles.infoLabel}>{t('evaluation.submitted')}:</span>{' '}
+          <span style={styles.infoLabel}>Submitted:</span>{' '}
           {new Date(evaluation.submittedAt).toLocaleString()}
         </div>
         {evaluation.description && (
           <div style={styles.info}>
-            <span style={styles.infoLabel}>{t('common.description')}:</span> {evaluation.description}
+            <span style={styles.infoLabel}>Description:</span> {evaluation.description}
           </div>
         )}
 
-        {/* ✅ EVALUATION RESPONSES SECTION */}
+        {/* ✅ EVALUATION RESPONSES WITH FILE DOWNLOADS */}
         {responses.length > 0 && (
-          <div style={{ marginTop: '32px', paddingTop: '24px', borderTop: '1px solid #e5e7eb' }}>
+          <div style={{ marginTop: '40px', paddingTop: '32px', borderTop: '2px solid #e5e7eb' }}>
             <h3 style={styles.sectionTitle}>
-              📋 {t('evaluator.evaluationResponses')} ({responses.length})
+              📋 Evaluation Responses ({responses.length} criteria assessed)
             </h3>
             
             {displayedResponses.map((response, index) => (
               <div key={index} style={styles.responseCard}>
-                <div style={{ fontSize: '14px', fontWeight: '600', color: '#111827', marginBottom: '8px' }}>
-                  Criterion #{response.criterionId}
-                  <span
-                    style={{
-                      ...styles.maturityBadge,
-                      background: getMaturityColor(response.maturityLevel) + '20',
-                      color: getMaturityColor(response.maturityLevel),
-                    }}
-                  >
-                    {getMaturityLabel(response.maturityLevel)}
-                  </span>
+                <div style={{ marginBottom: '16px' }}>
+                  <div style={{ fontSize: '15px', fontWeight: '600', color: '#111827' }}>
+                    Criterion #{response.criterionId}
+                    <span
+                      style={{
+                        ...styles.maturityBadge,
+                        background: getMaturityColor(response.maturityLevel) + '20',
+                        color: getMaturityColor(response.maturityLevel),
+                      }}
+                    >
+                      {getMaturityLabel(response.maturityLevel)}
+                    </span>
+                  </div>
                 </div>
+
                 {response.evidence && (
-                  <div style={{ fontSize: '13px', color: '#6b7280', marginBottom: '6px' }}>
-                    <strong>{t('ev.evidence')}:</strong> {response.evidence}
+                  <div style={{ fontSize: '14px', color: '#374151', marginBottom: '12px', lineHeight: '1.6' }}>
+                    <strong style={{ color: '#111827' }}>Evidence:</strong>
+                    <div style={{ marginTop: '6px', padding: '12px', background: 'white', borderRadius: '8px' }}>
+                      {response.evidence}
+                    </div>
                   </div>
                 )}
+
                 {response.comments && (
-                  <div style={{ fontSize: '13px', color: '#6b7280' }}>
-                    <strong>{t('ev.comments')}:</strong> {response.comments}
+                  <div style={{ fontSize: '14px', color: '#374151', marginBottom: '12px', lineHeight: '1.6' }}>
+                    <strong style={{ color: '#111827' }}>Comments:</strong>
+                    <div style={{ marginTop: '6px', padding: '12px', background: 'white', borderRadius: '8px' }}>
+                      {response.comments}
+                    </div>
+                  </div>
+                )}
+
+                {/* ✅ FILE DOWNLOAD BUTTON */}
+                {response.evidenceFile && (
+                  <div>
+                    <button
+                      style={styles.downloadButton}
+                      onClick={() => handleFileDownload(response.evidenceFile)}
+                      onMouseEnter={(e) => (e.target.style.background = '#2563eb')}
+                      onMouseLeave={(e) => (e.target.style.background = '#3b82f6')}
+                    >
+                      <span>📎</span>
+                      <span>Download Evidence File</span>
+                    </button>
                   </div>
                 )}
               </div>
@@ -390,7 +460,7 @@ const ReviewPage = () => {
                 onMouseLeave={(e) => (e.target.style.background = '#2563eb')}
               >
                 {showAllResponses 
-                  ? `Show Less` 
+                  ? 'Show Less' 
                   : `Show All ${responses.length} Responses`}
               </button>
             )}
@@ -404,6 +474,7 @@ const ReviewPage = () => {
           </div>
         )}
 
+        {/* Action Buttons */}
         <div style={styles.buttonGroup}>
           <button
             style={styles.approveButton}
@@ -412,7 +483,7 @@ const ReviewPage = () => {
             onMouseEnter={(e) => !processing && (e.target.style.background = '#059669')}
             onMouseLeave={(e) => !processing && (e.target.style.background = '#10b981')}
           >
-            {processing ? '⏳ Processing...' : `✓ ${t('evaluator.approveEvaluation')}`}
+            {processing ? '⏳ Processing...' : '✓ Approve Evaluation'}
           </button>
           <button
             style={styles.rejectButton}
@@ -421,7 +492,7 @@ const ReviewPage = () => {
             onMouseEnter={(e) => !processing && (e.target.style.background = '#dc2626')}
             onMouseLeave={(e) => !processing && (e.target.style.background = '#ef4444')}
           >
-            ✗ {t('evaluator.rejectEvaluation')}
+            ✗ Reject Evaluation
           </button>
         </div>
       </div>
@@ -431,7 +502,7 @@ const ReviewPage = () => {
         <div style={styles.modal} onClick={() => setShowRejectModal(false)}>
           <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
             <h3 style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '16px', color: '#111827' }}>
-              {t('evaluator.rejectEvaluation')}
+              Reject Evaluation
             </h3>
             <p style={{ fontSize: '14px', color: '#6b7280', marginBottom: '16px' }}>
               Please provide a reason for rejection:
@@ -460,14 +531,14 @@ const ReviewPage = () => {
                   setRejectReason('');
                 }}
               >
-                {t('common.cancel')}
+                Cancel
               </button>
               <button
                 style={styles.rejectButton}
                 onClick={handleReject}
                 disabled={processing || !rejectReason.trim()}
               >
-                {processing ? '⏳ Processing...' : t('evaluator.rejectEvaluation')}
+                {processing ? '⏳ Processing...' : 'Reject Evaluation'}
               </button>
             </div>
           </div>

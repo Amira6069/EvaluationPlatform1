@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import TestI18n from './test-i18n';
 
 // Layout Components
 import MainLayout from './components/layout/MainLayout';
@@ -28,6 +29,7 @@ import UsersPage from './Pages/Admin/UsersPage';
 import AdminEvaluationsPage from './Pages/Admin/EvaluationsPage';
 import GovernancePage from './Pages/Admin/GovernancePage';
 import AdminSettingsPage from './Pages/Admin/SettingsPage';
+<TestI18n />
 
 // Protected Route Component
 const ProtectedRoute = ({ children, allowedRoles }) => {

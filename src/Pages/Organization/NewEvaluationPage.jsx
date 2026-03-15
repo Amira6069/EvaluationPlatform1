@@ -30,7 +30,7 @@ const NewEvaluationPage = () => {
   const [loadingPrinciples, setLoadingPrinciples] = useState(true);
 
   useEffect(() => {
-    loadPrinciples(); // ✅ Load dynamic criteria first
+    loadPrinciples();
     
     if (id) {
       loadEvaluation(id);
@@ -43,7 +43,6 @@ const NewEvaluationPage = () => {
     }
   }, [currentPrincipleIndex, step]);
 
-  // ✅ LOAD DYNAMIC PRINCIPLES FROM API
   const loadPrinciples = async () => {
     try {
       setLoadingPrinciples(true);
@@ -103,7 +102,7 @@ const NewEvaluationPage = () => {
       setStep(2);
     } catch (err) {
       console.error('Error saving evaluation:', err);
-      setError(t('evaluation.createFailed') || 'Failed to create evaluation');
+      setError('Failed to create evaluation');
     } finally {
       setLoading(false);
     }
@@ -120,6 +119,60 @@ const NewEvaluationPage = () => {
     }));
   };
 
+  const handleFileUpload = async (principleId, practiceId, criterionId, file) => {
+    if (!file) return;
+
+    if (!evaluationId) {
+      alert('Please save the evaluation first before uploading files');
+      return;
+    }
+
+    // Validate file size (max 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      alert('File size must be less than 10MB');
+      return;
+    }
+
+    try {
+      console.log('📤 Uploading file:', file.name);
+      
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('evaluationId', evaluationId);
+      formData.append('criterionId', criterionId);
+
+      const response = await fetch('http://localhost:8080/api/files/upload', {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Bearer ' + localStorage.getItem('governance_token'),
+        },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Upload failed');
+      }
+
+      const data = await response.json();
+      console.log('✅ File uploaded:', data.filename);
+
+      // Save filename to response
+      handleResponseChange(
+        principleId,
+        practiceId,
+        criterionId,
+        'evidenceFile',
+        data.filename
+      );
+
+      alert('✅ File uploaded successfully!');
+    } catch (error) {
+      console.error('❌ Upload error:', error);
+      alert('Failed to upload file: ' + error.message);
+    }
+  };
+
   const handleSaveProgress = async () => {
     if (!evaluationId) return;
 
@@ -132,9 +185,10 @@ const NewEvaluationPage = () => {
           principleId,
           practiceId,
           criterionId,
-          maturityLevel: responses[key].maturityLevel,
+          maturityLevel: responses[key].maturityLevel || 0,
           evidence: responses[key].evidence || '',
           comments: responses[key].comments || '',
+          evidenceFile: responses[key].evidenceFile || null,
         };
       });
 
@@ -188,6 +242,7 @@ const NewEvaluationPage = () => {
           maturityLevel: responses[key].maturityLevel || 0,
           evidence: responses[key].evidence || '',
           comments: responses[key].comments || '',
+          evidenceFile: responses[key].evidenceFile || null,
         };
       });
 
@@ -365,6 +420,17 @@ const NewEvaluationPage = () => {
       cursor: 'pointer',
       transition: 'background 0.2s',
     },
+    fileAttached: {
+      marginTop: '8px',
+      padding: '8px 12px',
+      background: '#d1fae5',
+      borderRadius: '6px',
+      fontSize: '12px',
+      color: '#065f46',
+      display: 'flex',
+      alignItems: 'center',
+      gap: '8px',
+    },
   };
 
   if (loading || loadingPrinciples) {
@@ -384,9 +450,9 @@ const NewEvaluationPage = () => {
       <div style={styles.container}>
         <div style={styles.header}>
           <h1 style={styles.title}>
-            {evaluationId ? t('evaluation.editEvaluation') : t('evaluation.createEvaluation')}
+            {evaluationId ? 'Edit Evaluation' : t('evaluation.createEvaluation')}
           </h1>
-          <p style={styles.subtitle}>{t('evaluation.fillAllFields')}</p>
+          <p style={styles.subtitle}>Fill in the basic information</p>
         </div>
 
         <div style={styles.card}>
@@ -394,11 +460,11 @@ const NewEvaluationPage = () => {
 
           <form onSubmit={handleBasicInfoSubmit}>
             <div style={styles.formGroup}>
-              <label style={styles.label}>{t('evaluation.evaluationName')} *</label>
+              <label style={styles.label}>Evaluation Name *</label>
               <input
                 type="text"
                 style={styles.input}
-                placeholder={t('evaluation.enterName')}
+                placeholder="Enter evaluation name"
                 value={evaluationData.name}
                 onChange={(e) =>
                   setEvaluationData({ ...evaluationData, name: e.target.value })
@@ -408,11 +474,11 @@ const NewEvaluationPage = () => {
             </div>
 
             <div style={styles.formGroup}>
-              <label style={styles.label}>{t('ev.period')} *</label>
+              <label style={styles.label}>Period *</label>
               <input
                 type="text"
                 style={styles.input}
-                placeholder={t('evaluation.enterPeriod')}
+                placeholder="e.g., Q1 2026"
                 value={evaluationData.period}
                 onChange={(e) =>
                   setEvaluationData({ ...evaluationData, period: e.target.value })
@@ -422,10 +488,10 @@ const NewEvaluationPage = () => {
             </div>
 
             <div style={styles.formGroup}>
-              <label style={styles.label}>{t('ev.description')}</label>
+              <label style={styles.label}>Description</label>
               <textarea
                 style={styles.textarea}
-                placeholder={t('evaluation.enterDescription')}
+                placeholder="Enter description"
                 value={evaluationData.description}
                 onChange={(e) =>
                   setEvaluationData({ ...evaluationData, description: e.target.value })
@@ -439,7 +505,7 @@ const NewEvaluationPage = () => {
                 style={styles.buttonSecondary}
                 onClick={() => navigate('/organization/evaluations')}
               >
-                {t('common.cancel')}
+                Cancel
               </button>
               <button
                 type="submit"
@@ -448,7 +514,7 @@ const NewEvaluationPage = () => {
                 onMouseEnter={(e) => (e.target.style.background = '#1d4ed8')}
                 onMouseLeave={(e) => (e.target.style.background = '#2563eb')}
               >
-                {loading ? t('common.loading') : t('ev.next')} →
+                {loading ? 'Loading...' : 'Next →'}
               </button>
             </div>
           </form>
@@ -459,10 +525,10 @@ const NewEvaluationPage = () => {
 
   // STEP 2: Fill Criteria
   const maturityLevels = [
-    { value: 0, label: t('ev.level0') },
-    { value: 1, label: t('ev.level1') },
-    { value: 2, label: t('ev.level2') },
-    { value: 3, label: t('ev.level3') },
+    { value: 0, label: 'Not Implemented' },
+    { value: 1, label: 'Partially Implemented' },
+    { value: 2, label: 'Largely Implemented' },
+    { value: 3, label: 'Fully Implemented' },
   ];
 
   const currentPrinciple = principles[currentPrincipleIndex];
@@ -485,7 +551,7 @@ const NewEvaluationPage = () => {
       <div style={styles.header}>
         <h1 style={styles.title}>{evaluationData.name}</h1>
         <p style={styles.subtitle}>
-          {t('ev.principle')} {currentPrincipleIndex + 1} {t('ev.of')} {totalPrinciples}
+          Principle {currentPrincipleIndex + 1} of {totalPrinciples}
         </p>
       </div>
 
@@ -496,7 +562,7 @@ const NewEvaluationPage = () => {
       <div style={styles.card}>
         <div style={styles.principleHeader}>
           <div style={styles.principleTitle}>
-            {t('ev.principle')}: {currentPrinciple.name}
+            Principle: {currentPrinciple.name}
           </div>
           {currentPrinciple.description && (
             <div style={{ fontSize: '14px', opacity: 0.9 }}>
@@ -508,7 +574,7 @@ const NewEvaluationPage = () => {
         {currentPrinciple.practices.map((practice) => (
           <div key={practice.practiceId} style={styles.practiceCard}>
             <div style={styles.practiceTitle}>
-              {t('ev.practice')}: {practice.name}
+              Practice: {practice.name}
             </div>
             {practice.description && (
               <div style={{ fontSize: '13px', color: '#6b7280', marginBottom: '12px' }}>
@@ -526,6 +592,7 @@ const NewEvaluationPage = () => {
                     <strong>{criterion.description}</strong>
                   </div>
 
+                  {/* Maturity Level Buttons */}
                   <div style={styles.maturityButtons}>
                     {maturityLevels.map((level) => (
                       <button
@@ -555,13 +622,14 @@ const NewEvaluationPage = () => {
                     ))}
                   </div>
 
+                  {/* Evidence Text */}
                   <div style={styles.formGroup}>
                     <label style={{ ...styles.label, fontSize: '13px' }}>
-                      {t('ev.evidence')}
+                      Evidence (Text)
                     </label>
                     <textarea
                       style={{ ...styles.textarea, minHeight: '60px', fontSize: '13px' }}
-                      placeholder={t('ev.provideEvidence')}
+                      placeholder="Provide evidence for your assessment"
                       value={response.evidence || ''}
                       onChange={(e) =>
                         handleResponseChange(
@@ -575,13 +643,47 @@ const NewEvaluationPage = () => {
                     />
                   </div>
 
+                  {/* ✅ FILE UPLOAD */}
                   <div style={styles.formGroup}>
                     <label style={{ ...styles.label, fontSize: '13px' }}>
-                      {t('ev.comments')}
+                      📎 Upload Evidence File (PDF, Image - Max 10MB)
+                    </label>
+                    <input
+                      type="file"
+                      accept=".pdf,.png,.jpg,.jpeg"
+                      style={{
+                        ...styles.input,
+                        fontSize: '13px',
+                        padding: '8px',
+                      }}
+                      onChange={(e) => {
+                        const file = e.target.files[0];
+                        if (file) {
+                          handleFileUpload(
+                            currentPrinciple.principleId,
+                            practice.practiceId,
+                            criterion.criterionId,
+                            file
+                          );
+                        }
+                      }}
+                    />
+                    {response.evidenceFile && (
+                      <div style={styles.fileAttached}>
+                        <span>✅</span>
+                        <span>File attached: {response.evidenceFile.split('_').pop()}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Comments */}
+                  <div style={styles.formGroup}>
+                    <label style={{ ...styles.label, fontSize: '13px' }}>
+                      Additional Comments
                     </label>
                     <textarea
                       style={{ ...styles.textarea, minHeight: '60px', fontSize: '13px' }}
-                      placeholder={t('ev.addComments')}
+                      placeholder="Add your comments here"
                       value={response.comments || ''}
                       onChange={(e) =>
                         handleResponseChange(
@@ -613,7 +715,7 @@ const NewEvaluationPage = () => {
                 }
               }}
             >
-              ← {t('ev.previous')}
+              ← Previous
             </button>
             <button
               type="button"
@@ -623,7 +725,7 @@ const NewEvaluationPage = () => {
               onMouseEnter={(e) => (e.target.style.background = '#059669')}
               onMouseLeave={(e) => (e.target.style.background = '#10b981')}
             >
-              {saving ? '💾 Saving...' : `💾 ${t('ev.saveProgress')}`}
+              {saving ? '💾 Saving...' : '💾 Save Progress'}
             </button>
           </div>
 
@@ -636,7 +738,7 @@ const NewEvaluationPage = () => {
                 onMouseEnter={(e) => (e.target.style.background = '#1d4ed8')}
                 onMouseLeave={(e) => (e.target.style.background = '#2563eb')}
               >
-                {t('ev.next')} →
+                Next →
               </button>
             ) : (
               <button
@@ -647,7 +749,7 @@ const NewEvaluationPage = () => {
                 onMouseEnter={(e) => (e.target.style.background = '#059669')}
                 onMouseLeave={(e) => (e.target.style.background = '#10b981')}
               >
-                {saving ? 'Submitting...' : `✓ ${t('ev.submitEvaluation')}`}
+                {saving ? 'Submitting...' : '✓ Submit Evaluation'}
               </button>
             )}
           </div>
